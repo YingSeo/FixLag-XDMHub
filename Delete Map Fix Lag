@@ -2,265 +2,138 @@ local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 
-local function createUI()
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "XDM_FixLag_UI"
-    ScreenGui.ResetOnSpawn = false
+-- 1. Tạo nền xám phẳng duy nhất để đứng
+local baseplate = Workspace:FindFirstChild("XDM_Baseplate")
+if not baseplate then
+    baseplate = Instance.new("Part")
+    baseplate.Name = "XDM_Baseplate"
+    baseplate.Size = Vector3.new(500000, 10, 500000)
+    baseplate.Position = Vector3.new(0, -10, 0)
+    baseplate.Anchored = true
+    baseplate.CanCollide = true
+    baseplate.Material = Enum.Material.SmoothPlastic
+    baseplate.Color = Color3.fromRGB(70, 70, 70)
+    baseplate.Parent = Workspace
+end
+
+-- 2. Xóa sạch nước biển và địa hình (Terrain)
+pcall(function()
+    Workspace.Terrain:Clear()
+end)
+
+-- 3. Kiểm tra xem đối tượng có phải là Nhân vật / Quái / NPC / Thuyền không
+local function isEntity(obj)
+    if not obj then return false end
+    if obj == baseplate then return true end
     
-    local success = pcall(function()
-        ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    end)
-    if not success then
-        ScreenGui.Parent = game:GetService("CoreGui")
+    -- Giữ lại người chơi
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Character and obj:IsDescendantOf(player.Character) then
+            return true
+        end
+    end
+    
+    -- Giữ lại Quái, NPC, Thuyền trong Blox Fruits
+    local enemies = Workspace:FindFirstChild("Enemies")
+    if enemies and obj:IsDescendantOf(enemies) then return true end
+    
+    local npcs = Workspace:FindFirstChild("NPCs")
+    if npcs and obj:IsDescendantOf(npcs) then return true end
+    
+    local boats = Workspace:FindFirstChild("Boats")
+    if boats and obj:IsDescendantOf(boats) then return true end
+
+    if obj:FindFirstChildOfClass("Humanoid") then return true end
+    
+    return false
+end
+
+-- 4. Xóa sạch mọi hiệu ứng kỹ năng, hạt, ánh sáng & màu sắc
+local function wipeVFXAndColors(obj)
+    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") or obj:IsA("Highlight") or obj:IsA("SelectionBox") or obj:IsA("Explosion") then
+        pcall(function()
+            obj.Enabled = false
+            obj:Destroy()
+        end)
+    elseif obj:IsA("Light") or obj:IsA("PostEffect") or obj:IsA("ColorCorrectionEffect") or obj:IsA("BlurEffect") or obj:IsA("SunRaysEffect") or obj:IsA("BloomEffect") or obj:IsA("DepthOfFieldEffect") then
+        pcall(function() obj:Destroy() end)
+    elseif obj:IsA("Decal") or obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then
+        pcall(function() obj:Destroy() end)
+    end
+end
+
+-- 5. Xóa triệt để các phần của Map
+local function purgeObject(obj)
+    if isEntity(obj) then
+        -- Nếu là entity, vẫn xóa các hiệu ứng chiêu gắn trên người/chiêu thức
+        for _, child in ipairs(obj:GetDescendants()) do
+            wipeVFXAndColors(child)
+        end
+        return
     end
 
-    local FpsLabel = Instance.new("TextLabel")
-    FpsLabel.Name = "FpsLabel"
-    FpsLabel.Parent = ScreenGui
-    FpsLabel.Size = UDim2.new(0, 140, 0, 30)
-    FpsLabel.Position = UDim2.new(0, 15, 0, 15)
-    FpsLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    FpsLabel.BackgroundTransparency = 0.2
-    FpsLabel.TextColor3 = Color3.fromRGB(0, 255, 127)
-    FpsLabel.TextSize = 15
-    FpsLabel.Font = Enum.Font.SourceSansBold
-    FpsLabel.Text = "FPS: --"
-    
-    local Corner = Instance.new("UICorner")
-    Corner.CornerRadius = UDim.new(0, 6)
-    Corner.Parent = FpsLabel
+    wipeVFXAndColors(obj)
 
-    local NotifLabel = Instance.new("TextLabel")
-    NotifLabel.Name = "NotifLabel"
-    NotifLabel.Parent = ScreenGui
-    NotifLabel.Size = UDim2.new(0, 260, 0, 40)
-    NotifLabel.Position = UDim2.new(0.5, -130, 1, 100)
-    NotifLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    NotifLabel.BackgroundTransparency = 0.15
-    NotifLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    NotifLabel.TextSize = 15
-    NotifLabel.Font = Enum.Font.SourceSansBold
-    NotifLabel.Text = "XDM Hub - Fix Lag: Loading..."
+    -- Xóa các Model/Part thuộc về Map
+    if obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") or obj:IsA("Model") or obj:IsA("Folder") then
+        if obj ~= Workspace.Terrain and obj ~= baseplate then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+end
 
-    local NotifCorner = Instance.new("UICorner")
-    NotifCorner.CornerRadius = UDim.new(0, 8)
-    NotifCorner.Parent = NotifLabel
+-- Quét toàn bộ Workspace hiện tại
+for _, child in ipairs(Workspace:GetChildren()) do
+    if not isEntity(child) and child ~= baseplate and child ~= Workspace.Terrain then
+        pcall(function() child:Destroy() end)
+    end
+end
 
-    local NotifStroke = Instance.new("UIStroke")
-    NotifStroke.Color = Color3.fromRGB(0, 170, 255)
-    NotifStroke.Thickness = 1.5
-    NotifStroke.Parent = NotifLabel
+-- Tối ưu Lighting & Bầu trời (Xóa sạch màu sắc & hiệu ứng thời tiết)
+Lighting.GlobalShadows = false
+Lighting.FogEnd = 9e9
+Lighting.Brightness = 1
+Lighting.OutdoorAmbient = Color3.fromRGB(120, 120, 120)
+Lighting.Ambient = Color3.fromRGB(120, 120, 120)
 
+for _, child in ipairs(Lighting:GetChildren()) do
+    pcall(function() child:Destroy() end)
+end
+
+local DarkSky = Instance.new("Sky")
+DarkSky.Name = "PurgedSky"
+DarkSky.SkyboxBk = ""
+DarkSky.SkyboxDn = ""
+DarkSky.SkyboxFt = ""
+DarkSky.SkyboxLf = ""
+DarkSky.SkyboxRt = ""
+DarkSky.SkyboxUp = ""
+DarkSky.SunTextureId = ""
+DarkSky.MoonTextureId = ""
+DarkSky.StarCount = 0
+DarkSky.Parent = Lighting
+
+-- 6. Lắng nghe liên tục khi Map hoặc Chiêu thức mới load ra
+Workspace.DescendantAdded:Connect(function(obj)
     task.spawn(function()
-        local frameCount = 0
-        local lastCheck = tick()
-        RunService.RenderStepped:Connect(function()
-            frameCount = frameCount + 1
-            local currentTime = tick()
-            if currentTime - lastCheck >= 1 then
-                FpsLabel.Text = "FPS: " .. tostring(math.floor(frameCount / (currentTime - lastCheck)))
-                frameCount = 0
-                lastCheck = currentTime
-            end
-        end)
+        if isEntity(obj) then
+            wipeVFXAndColors(obj)
+        else
+            purgeObject(obj)
+        end
     end)
+end)
 
-    return NotifLabel
-end
-
-local notif = createUI()
-
-local function showNotification(text)
-    notif.Text = text
-    TweenService:Create(notif, TweenInfo.new(0.4), {Position = UDim2.new(0.5, -130, 1, -60)}):Play()
-    task.delay(4, function()
-        TweenService:Create(notif, TweenInfo.new(0.4), {Position = UDim2.new(0.5, -130, 1, 100)}):Play()
-    end)
-end
-
-showNotification("XDM Hub - Fix Lag: Loading...")
-
-task.spawn(function()
-    Lighting.GlobalShadows = false
-    Lighting.FogEnd = 9e9
-    Lighting.Brightness = 1
-    Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
-    Lighting.Ambient = Color3.fromRGB(128, 128, 128)
+-- Vòng lặp dọn dẹp liên tục (Chống Blox Fruits tự spawn lại Map & Nước)
+RunService.Heartbeat:Connect(function()
+    pcall(function() Workspace.Terrain:Clear() end)
     
-    for _, child in ipairs(Lighting:GetChildren()) do
-        if child:IsA("PostEffect") or child:IsA("Atmosphere") or child:IsA("Sky") or child:IsA("Clouds") or child:IsA("SunRaysEffect") or child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("ColorCorrectionEffect") then
-            child:Destroy()
-        end
-    end
-
-    local NewSky = Instance.new("Sky")
-    NewSky.Name = "XDMSky"
-    NewSky.SkyboxBk = ""
-    NewSky.SkyboxDn = ""
-    NewSky.SkyboxFt = ""
-    NewSky.SkyboxLf = ""
-    NewSky.SkyboxRt = ""
-    NewSky.SkyboxUp = ""
-    NewSky.SunTextureId = ""
-    NewSky.MoonTextureId = ""
-    NewSky.StarCount = 0
-    NewSky.Parent = Lighting
-
-    pcall(function()
-        local terrain = Workspace:FindFirstChildOfClass("Terrain")
-        if terrain then
-            terrain.WaterWaveSize = 0
-            terrain.WaterWaveSpeed = 0
-            terrain.WaterReflectance = 0
-            terrain.WaterTransparency = 1
-        end
-    end)
-
-    local baseplate = Workspace:FindFirstChild("XDM_Baseplate")
-    if not baseplate then
-        baseplate = Instance.new("Part")
-        baseplate.Name = "XDM_Baseplate"
-        baseplate.Size = Vector3.new(100000, 10, 100000)
-        baseplate.Position = Vector3.new(0, -5, 0)
-        baseplate.Anchored = true
-        baseplate.CanCollide = true
-        baseplate.Material = Enum.Material.Studs
-        baseplate.Color = Color3.fromRGB(90, 90, 90)
-        baseplate.Parent = Workspace
-    end
-
-    local function isProtected(obj)
-        if not obj then return false end
-        if obj == baseplate then return true end
-        if LocalPlayer.Character and obj:IsDescendantOf(LocalPlayer.Character) then
-            return true
-        end
-
-        local current = obj
-        while current and current ~= Workspace do
-            local cName = current.Name:lower()
-            if cName == "enemies" or cName == "npcs" or cName == "boats" or cName == "characters" or cName == "players" then
-                return true
-            end
-            if cName:find("boat") or cName:find("ship") or cName:find("leviathan") or cName:find("seaevent") then
-                return true
-            end
-            if current:FindFirstChildOfClass("Humanoid") then
-                return true
-            end
-            current = current.Parent
-        end
-
-        if Workspace:FindFirstChild("Enemies") and obj:IsDescendantOf(Workspace.Enemies) then return true end
-        if Workspace:FindFirstChild("NPCs") and obj:IsDescendantOf(Workspace.NPCs) then return true end
-        if Workspace:FindFirstChild("Boats") and obj:IsDescendantOf(Workspace.Boats) then return true end
-
-        local name = obj.Name:lower()
-        if name:find("boat") or name:find("ship") or name:find("leviathan") or name:find("seaevent") or name:find("npc") or name:find("enemy") then
-            return true
-        end
-
-        return false
-    end
-
-    local function killVFXAndColor(v)
-        if isProtected(v) then return end
-
-        if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Highlight") or v:IsA("SelectionBox") or v:IsA("Explosion") then
-            pcall(function()
-                v.Enabled = false
-                v:Destroy()
-            end)
-        elseif v:IsA("Light") or v:IsA("PostEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") then
-            pcall(function() v:Destroy() end)
-        elseif v:IsA("Decal") or v:IsA("Texture") or v:IsA("SurfaceAppearance") then
-            pcall(function() v:Destroy() end)
-        elseif v:IsA("SpecialMesh") then
-            pcall(function() v:Destroy() end)
-        elseif v:IsA("BasePart") or v:IsA("MeshPart") then
-            pcall(function()
-                v.Transparency = 1
-                v.CastShadow = false
-            end)
-        end
-    end
-
-    local function wipeObject(v)
-        if isProtected(v) then return end
-        killVFXAndColor(v)
-
-        if v:IsA("Model") or v:IsA("Folder") then
-            local protected = false
-            for _, child in ipairs(v:GetChildren()) do
-                if isProtected(child) then
-                    protected = true
-                    break
-                end
-            end
-            if not protected then
-                pcall(function() v:Destroy() end)
-            end
-        elseif v:IsA("BasePart") or v:IsA("MeshPart") then
-            pcall(function() v:Destroy() end)
-        end
-    end
-
-    local descendants = Workspace:GetDescendants()
-    local count = 0
-    for _, v in ipairs(descendants) do
-        pcall(wipeObject, v)
-        count = count + 1
-        if count % 50 == 0 then
-            task.wait()
-        end
-    end
-
-    Workspace.DescendantAdded:Connect(function(v)
-        task.spawn(function()
-            if isProtected(v) then return end
-            killVFXAndColor(v)
-        end)
-    end)
-
-    Lighting.ChildAdded:Connect(function(child)
-        task.spawn(function()
-            if child:IsA("PostEffect") or child:IsA("Atmosphere") or child:IsA("Sky") or child:IsA("Clouds") or child:IsA("SunRaysEffect") or child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("ColorCorrectionEffect") then
-                if child.Name ~= "XDMSky" then
-                    child:Destroy()
-                end
-            end
-        end)
-    end)
-
-    local camera = Workspace.CurrentCamera
-    if camera then
-        camera.ChildAdded:Connect(function(child)
-            task.spawn(function()
-                killVFXAndColor(child)
-            end)
-        end)
-        for _, child in ipairs(camera:GetChildren()) do
-            task.spawn(function()
-                killVFXAndColor(child)
-            end)
-        end
-    end
-
-    RunService.Stepped:Connect(function()
-        for _, gui in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
-            if gui:IsA("ScreenGui") and gui.Name ~= "XDM_FixLag_UI" then
-                for _, effect in ipairs(gui:GetDescendants()) do
-                    if effect:IsA("ImageLabel") and (effect.Name:lower():find("v4") or effect.Name:lower():find("haki") or effect.Name:lower():find("flash") or effect.Name:lower():find("overlay") or effect.Name:lower():find("color")) then
-                        effect.Visible = false
-                    end
-                end
-            end
-        end
-    end)
-
-    showNotification("XDM Hub - Fix Lag: Load Xong!")
+    local mapFolder = Workspace:FindFirstChild("Map")
+    if mapFolder then pcall(function() mapFolder:Destroy() end) end
+    
+    local locationsFolder = Workspace:FindFirstChild("Locations")
+    if locationsFolder then pcall(function() locationsFolder:Destroy() end) end
 end)
