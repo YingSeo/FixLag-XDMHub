@@ -5,74 +5,22 @@ local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 
--- 1. Tạo Sàn An Toàn Trên Không (Y = 100, Độ cao đứng Y = 113.5)
-local PLATFORM_Y = 100
-local PLATFORM_HEIGHT = 20
-local STAND_Y = PLATFORM_Y + (PLATFORM_HEIGHT / 2) + 3.5 
-
-local platform = Workspace:FindFirstChild("XDM_SafePlatform")
+-- 1. Tạo Sàn Ngay Mặt Nước Biển (Tọa độ Y = 0)
+local platform = Workspace:FindFirstChild("XDM_WaterPlatform")
 if not platform then
     platform = Instance.new("Part")
-    platform.Name = "XDM_SafePlatform"
-    platform.Size = Vector3.new(30000, PLATFORM_HEIGHT, 30000)
-    platform.Position = Vector3.new(0, PLATFORM_Y, 0)
+    platform.Name = "XDM_WaterPlatform"
+    platform.Size = Vector3.new(60000, 2, 60000)
+    platform.Position = Vector3.new(0, -1, 0) -- Mặt trên sàn đúng Y = 0 (Mặt nước)
     platform.Anchored = true
     platform.CanCollide = true
     platform.Material = Enum.Material.SmoothPlastic
-    platform.Color = Color3.fromRGB(80, 80, 80)
+    platform.Transparency = 0.3 -- Hơi trong suốt nhẹ giống mặt nước
+    platform.Color = Color3.fromRGB(0, 120, 200)
     platform.Parent = Workspace
 end
 
--- 2. Tự động kéo NPC & Quái bị lún bên dưới LÊN ĐỨNG TÊN NỀN MỚI
-local function bringToPlatform(model)
-    if not model or not model:IsA("Model") then return end
-    
-    local hrp = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart or model:FindFirstChild("Torso") or model:FindFirstChild("Head")
-    if hrp and hrp:IsA("BasePart") then
-        -- Nếu NPC/Quái đang ở vị trí thấp hơn mặt sàn mới (Y < 105)
-        if hrp.Position.Y < (PLATFORM_Y + 5) then
-            pcall(function()
-                local currentPos = hrp.Position
-                -- Giữ nguyên tọa độ X, Z; kéo độ cao Y lên thẳng trên mặt sàn
-                hrp.CFrame = CFrame.new(currentPos.X, STAND_Y, currentPos.Z)
-                
-                -- Khóa cố định NPC tĩnh để không bị trượt/rớt lại xuống bên dưới
-                if model.Parent and (model.Parent.Name == "NPCs" or model.Name:lower():find("npc")) then
-                    hrp.Anchored = true
-                end
-            end)
-        end
-    end
-end
-
--- Hàm cập nhật kéo Nhân vật, NPC, Quái lên nền liên tục
-local function updateAllEntities()
-    -- Kéo Nhân vật người chơi nếu bị rớt
-    if LocalPlayer.Character then
-        local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if hrp and hrp.Position.Y < (PLATFORM_Y + 5) then
-            hrp.CFrame = CFrame.new(hrp.Position.X, STAND_Y + 2, hrp.Position.Z)
-        end
-    end
-
-    -- Kéo tất cả NPC trong thư mục game
-    local npcsFolder = Workspace:FindFirstChild("NPCs")
-    if npcsFolder then
-        for _, npc in ipairs(npcsFolder:GetChildren()) do
-            bringToPlatform(npc)
-        end
-    end
-
-    -- Kéo Quái trong thư mục game
-    local enemiesFolder = Workspace:FindFirstChild("Enemies")
-    if enemiesFolder then
-        for _, enemy in ipairs(enemiesFolder:GetChildren()) do
-            bringToPlatform(enemy)
-        end
-    end
-end
-
--- 3. Tắt Màu Màn Hình & Ánh Sáng (Giảm Lag Maximum)
+-- 2. Tắt hiệu ứng ánh sáng & Bầu trời (Tăng FPS)
 Lighting.GlobalShadows = false
 Lighting.FogEnd = 9e9
 Lighting.Brightness = 1
@@ -85,63 +33,72 @@ for _, v in ipairs(Lighting:GetChildren()) do
     end
 end
 
--- 4. Bảo vệ Entity không bị xóa nhầm
-local function isNPC_Or_Entity(obj)
+-- 3. Nhận diện NPC / Quái / Player / Thuyền
+local function isEntity(obj)
     if not obj then return false end
-    if obj == platform or obj.Name == "XDM_SafePlatform" then return true end
+    if obj == platform or obj.Name == "XDM_WaterPlatform" then return true end
 
+    -- Người chơi
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Character and (obj == p.Character or obj:IsDescendantOf(p.Character)) then
             return true
         end
     end
 
-    local current = obj
-    while current and current ~= Workspace do
-        local name = current.Name:lower()
-        if name:find("npc") or name:find("quest") or name:find("enemy") or name:find("enemies") or name:find("boat") or name:find("dealer") or name:find("manager") or name:find("gacha") then
+    -- NPC, Quái, Thuyền, Quest
+    local model = obj:FindFirstAncestorOfClass("Model")
+    if model then
+        if model.Parent and (model.Parent.Name == "NPCs" or model.Parent.Name == "Enemies" or model.Parent.Name == "Characters") then
             return true
         end
-        if current:FindFirstChildOfClass("Humanoid") or current:FindFirstChildOfClass("ProximityPrompt") or current:FindFirstChildOfClass("ClickDetector") then
+        if model:FindFirstChildOfClass("Humanoid") or model:FindFirstChildOfClass("ProximityPrompt") or model:FindFirstChildOfClass("ClickDetector") then
             return true
         end
-        current = current.Parent
+        local name = model.Name:lower()
+        if name:find("npc") or name:find("quest") or name:find("enemy") or name:find("dealer") or name:find("gacha") or name:find("merchant") or name:find("blox") or name:find("boat") then
+            return true
+        end
     end
 
     return false
 end
 
--- 5. Sửa nút tương tác NPC (Nhấp nút là ăn ngay, không cần giữ)
+-- 4. Fix Nút Tương Tác NPC (Bấm ăn liền, không cần giữ)
 local function fixNPCInteraction(v)
     if v:IsA("ProximityPrompt") then
         pcall(function()
             v.Enabled = true
             v.HoldDuration = 0
             v.RequiresLineOfSight = false
-            v.MaxActivationDistance = 50
+            v.MaxActivationDistance = 60
         end)
     elseif v:IsA("ClickDetector") then
         pcall(function()
-            v.MaxActivationDistance = 50
+            v.MaxActivationDistance = 60
         end)
     end
 end
 
--- 6. Tàn Hình Map & Xóa VFX Chiêu
+-- 5. Xử lý Tàng Hình Map & Hiện Rõ NPC
 local function processObject(v)
     if v:IsA("ProximityPrompt") or v:IsA("ClickDetector") then
         fixNPCInteraction(v)
         return
     end
 
-    if isNPC_Or_Entity(v) then
+    -- NẾU LÀ NPC / QUÁI / PLAYER -> HIỆN RÕ NGUYÊN BẢN
+    if isEntity(v) then
         if v:IsA("BasePart") then
-            v.CanTouch = true
-            v.CanQuery = true
+            pcall(function()
+                v.Transparency = 0
+                v.CanTouch = true
+                v.CanQuery = true
+            end)
         end
         return
     end
 
+    -- XÓA VFX CHIÊU / HIỆU ỨNG RÁC
     if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Highlight") or v:IsA("SelectionBox") or v:IsA("Explosion") then
         pcall(function()
             v.Enabled = false
@@ -149,6 +106,7 @@ local function processObject(v)
         end)
     elseif v:IsA("Light") or v:IsA("PostEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BlurEffect") then
         pcall(function() v:Destroy() end)
+    -- TÀNG HÌNH MAP (NÚI ĐÁ, NHÀ CỬA, CÂY CỐI)
     elseif v:IsA("BasePart") or v:IsA("MeshPart") or v:IsA("UnionOperation") then
         pcall(function()
             v.Transparency = 1
@@ -164,20 +122,15 @@ task.spawn(function()
     end
 end)
 
--- Tự động xử lý đối tượng / NPC mới xuất hiện
+-- Tự động quét vật thể mới xuất hiện
 Workspace.DescendantAdded:Connect(function(v)
     task.spawn(function()
         processObject(v)
-        if v.Parent and (v.Parent.Name == "NPCs" or v.Parent.Name == "Enemies") then
-            bringToPlatform(v)
-        end
     end)
 end)
 
--- VÒNG LẶP LIÊN TỤC: Đưa NPC lên nền & Khóa tương tác cực nhạy
+-- Vòng lặp giữ cho nút bấm NPC luôn sẵn sàng
 RunService.Heartbeat:Connect(function()
-    updateAllEntities()
-    
     for _, prompt in ipairs(Workspace:GetDescendants()) do
         if prompt:IsA("ProximityPrompt") then
             prompt.Enabled = true
