@@ -2,7 +2,32 @@ local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
 
--- 1. Tối ưu Ánh sáng & Bầu trời (Xóa hiệu ứng màu màn hình)
+local LocalPlayer = Players.LocalPlayer
+
+-- 1. Tạo Sàn Xám Phẳng ngay dưới chân bạn để đứng cố định
+local function createPlatform()
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local spawnY = root and (root.Position.Y - 3.5) or 0
+    local spawnPos = root and Vector3.new(root.Position.X, spawnY, root.Position.Z) or Vector3.new(0, 0, 0)
+
+    local platform = Workspace:FindFirstChild("XDM_FarmPlatform")
+    if not platform then
+        platform = Instance.new("Part")
+        platform.Name = "XDM_FarmPlatform"
+        platform.Size = Vector3.new(100000, 10, 100000)
+        platform.Position = spawnPos
+        platform.Anchored = true
+        platform.CanCollide = true
+        platform.Material = Enum.Material.SmoothPlastic
+        platform.Color = Color3.fromRGB(80, 80, 80)
+        platform.Parent = Workspace
+    end
+    return platform
+end
+
+local platform = createPlatform()
+
+-- 2. Tắt hiệu ứng Ánh sáng & Bầu trời (Xóa màu màn hình, tăng FPS)
 Lighting.GlobalShadows = false
 Lighting.FogEnd = 9e9
 Lighting.Brightness = 1
@@ -15,7 +40,35 @@ for _, v in ipairs(Lighting:GetChildren()) do
     end
 end
 
--- 2. Hàm dọn sạch Hiệu ứng Chiêu (VFX), Hạt sáng, Đèn, Decal
+-- 3. Kiểm tra bảo vệ Nhân vật / NPC / Quái / Thuyền / Sàn
+local function isProtected(obj)
+    if not obj then return true end
+    if obj == platform or obj.Name == "XDM_FarmPlatform" then return true end
+
+    -- Bảo vệ Người chơi
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character and (obj == p.Character or obj:IsDescendantOf(p.Character)) then
+            return true
+        end
+    end
+
+    -- Bảo vệ NPC, Quái, Quest, Thuyền
+    local current = obj
+    while current and current ~= Workspace do
+        local name = current.Name:lower()
+        if name:find("enemy") or name:find("enemies") or name:find("npc") or name:find("quest") or name:find("boat") or name:find("player") then
+            return true
+        end
+        if current:FindFirstChildOfClass("Humanoid") then
+            return true
+        end
+        current = current.Parent
+    end
+
+    return false
+end
+
+-- 4. Tắt VFX Chiêu, Hạt sáng, Đèn, Decal
 local function cleanVFX(v)
     if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Highlight") or v:IsA("SelectionBox") or v:IsA("Explosion") then
         pcall(function()
@@ -29,54 +82,28 @@ local function cleanVFX(v)
     end
 end
 
--- 3. Bỏ qua các đối tượng quan trọng mà Script Farm cần dùng
-local function isEssential(obj)
-    if not obj then return true end
-    
-    -- Bảo vệ Người chơi
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Character and (obj == p.Character or obj:IsDescendantOf(p.Character)) then
-            return true
-        end
-    end
-    
-    -- Bảo vệ NPC, Quái, Quest, Thuyền, Cổng dịch chuyển
-    local current = obj
-    while current and current ~= Workspace do
-        local name = current.Name:lower()
-        if name:find("enemy") or name:find("enemies") or name:find("npc") or name:find("quest") or name:find("boat") or name:find("player") or name:find("location") or name:find("world") then
-            return true
-        end
-        if current:FindFirstChildOfClass("Humanoid") or current:FindFirstChildOfClass("TouchTransmitter") then
-            return true
-        end
-        current = current.Parent
-    end
-    
-    return false
-end
-
--- 4. Ẩn Map (Không Destroy để Script Farm vẫn Raycast/Teleport được)
-local function optimizeObject(obj)
+-- 5. Làm tàng hình Map (Không xóa để Script Farm vẫn đọc được dữ liệu)
+local function hideMap(obj)
     cleanVFX(obj)
-    
-    if isEssential(obj) then return end
+
+    if isProtected(obj) then return end
 
     if obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
         pcall(function()
             obj.Transparency = 1
             obj.CastShadow = false
-            obj.Material = Enum.Material.SmoothPlastic
         end)
     end
 end
 
--- Quét ẩn Map toàn bộ Workspace
-for _, v in ipairs(Workspace:GetDescendants()) do
-    task.spawn(optimizeObject, v)
-end
+-- Tiến hành tàng hình Map
+task.spawn(function()
+    for _, v in ipairs(Workspace:GetDescendants()) do
+        hideMap(v)
+    end
+end)
 
--- Làm trong suốt nước biển
+-- Tắt nước biển
 pcall(function()
     local terrain = Workspace.Terrain
     terrain.WaterTransparency = 1
@@ -85,7 +112,7 @@ pcall(function()
     terrain.WaterReflectance = 0
 end)
 
--- Tự động xóa VFX chiêu mới khi xài skill
+-- Tự động dọn dẹp VFX khi tung chiêu mới mà không làm treo game
 Workspace.DescendantAdded:Connect(function(v)
     task.spawn(function()
         cleanVFX(v)
