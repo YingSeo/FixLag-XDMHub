@@ -1,44 +1,53 @@
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
-local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local LocalPlayer = Players.LocalPlayer
+-- 1. Tối ưu Ánh sáng & Bầu trời (Xóa hiệu ứng màu màn hình)
+Lighting.GlobalShadows = false
+Lighting.FogEnd = 9e9
+Lighting.Brightness = 1
+Lighting.OutdoorAmbient = Color3.fromRGB(120, 120, 120)
+Lighting.Ambient = Color3.fromRGB(120, 120, 120)
 
--- 1. Tạo Baseplate xám phẳng duy nhất dưới chân để đứng
-local baseplate = Workspace:FindFirstChild("XDM_Baseplate")
-if not baseplate then
-    baseplate = Instance.new("Part")
-    baseplate.Name = "XDM_Baseplate"
-    baseplate.Size = Vector3.new(1000000, 10, 1000000)
-    baseplate.Position = Vector3.new(0, -10, 0)
-    baseplate.Anchored = true
-    baseplate.CanCollide = true
-    baseplate.Material = Enum.Material.SmoothPlastic
-    baseplate.Color = Color3.fromRGB(80, 80, 80)
-    baseplate.Parent = Workspace
+for _, v in ipairs(Lighting:GetChildren()) do
+    if v:IsA("PostEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") or v:IsA("Atmosphere") then
+        pcall(function() v:Destroy() end)
+    end
 end
 
--- 2. Danh sách bảo vệ (Không xóa Người chơi, Quái, NPC, Thuyền)
-local function isProtected(obj)
-    if not obj then return false end
-    if obj == baseplate then return true end
+-- 2. Hàm dọn sạch Hiệu ứng Chiêu (VFX), Hạt sáng, Đèn, Decal
+local function cleanVFX(v)
+    if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Highlight") or v:IsA("SelectionBox") or v:IsA("Explosion") then
+        pcall(function()
+            v.Enabled = false
+            v:Destroy()
+        end)
+    elseif v:IsA("Light") or v:IsA("PostEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BlurEffect") then
+        pcall(function() v:Destroy() end)
+    elseif v:IsA("Decal") or v:IsA("Texture") or v:IsA("SurfaceAppearance") then
+        pcall(function() v:Destroy() end)
+    end
+end
+
+-- 3. Bỏ qua các đối tượng quan trọng mà Script Farm cần dùng
+local function isEssential(obj)
+    if not obj then return true end
     
-    -- Giữ lại Người chơi
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player.Character and (obj == player.Character or obj:IsDescendantOf(player.Character)) then
+    -- Bảo vệ Người chơi
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character and (obj == p.Character or obj:IsDescendantOf(p.Character)) then
             return true
         end
     end
     
-    -- Giữ lại Quái, NPC, Thuyền
+    -- Bảo vệ NPC, Quái, Quest, Thuyền, Cổng dịch chuyển
     local current = obj
     while current and current ~= Workspace do
         local name = current.Name:lower()
-        if name == "enemies" or name == "npcs" or name == "boats" or name == "characters" then
+        if name:find("enemy") or name:find("enemies") or name:find("npc") or name:find("quest") or name:find("boat") or name:find("player") or name:find("location") or name:find("world") then
             return true
         end
-        if current:FindFirstChildOfClass("Humanoid") then
+        if current:FindFirstChildOfClass("Humanoid") or current:FindFirstChildOfClass("TouchTransmitter") then
             return true
         end
         current = current.Parent
@@ -47,103 +56,38 @@ local function isProtected(obj)
     return false
 end
 
--- 3. Xóa màu sắc bầu trời & Ánh sáng (Lighting)
-local function cleanLighting()
-    Lighting.GlobalShadows = false
-    Lighting.FogEnd = 9e9
-    Lighting.Brightness = 1
-    Lighting.OutdoorAmbient = Color3.fromRGB(100, 100, 100)
-    Lighting.Ambient = Color3.fromRGB(100, 100, 100)
+-- 4. Ẩn Map (Không Destroy để Script Farm vẫn Raycast/Teleport được)
+local function optimizeObject(obj)
+    cleanVFX(obj)
     
-    for _, v in ipairs(Lighting:GetChildren()) do
-        if not v:IsA("Sky") or v.Name ~= "XDM_Sky" then
-            pcall(function() v:Destroy() end)
-        end
-    end
-    
-    if not Lighting:FindFirstChild("XDM_Sky") then
-        local sky = Instance.new("Sky")
-        sky.Name = "XDM_Sky"
-        sky.SkyboxBk = ""
-        sky.SkyboxDn = ""
-        sky.SkyboxFt = ""
-        sky.SkyboxLf = ""
-        sky.SkyboxRt = ""
-        sky.SkyboxUp = ""
-        sky.SunTextureId = ""
-        sky.MoonTextureId = ""
-        sky.StarCount = 0
-        sky.Parent = Lighting
-    end
-end
-
--- 4. Tắt & Xóa sạch Hiệu ứng Chiêu (VFX), Hạt sáng, Đèn, Màu
-local function processVFX(v)
-    if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Highlight") or v:IsA("SelectionBox") or v:IsA("Explosion") then
-        pcall(function()
-            v.Enabled = false
-            v:Destroy()
-        end)
-    elseif v:IsA("Light") or v:IsA("PostEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") then
-        pcall(function() v:Destroy() end)
-    elseif v:IsA("Decal") or v:IsA("Texture") or v:IsA("SurfaceAppearance") then
-        pcall(function() v:Destroy() end)
-    end
-end
-
--- 5. Xóa/Ẩn Map triệt để
-local function processMapObject(obj)
-    if isProtected(obj) then
-        -- Vẫn lọc bỏ VFX chiêu nếu nó dính vào NPC/Player
-        for _, child in ipairs(obj:GetChildren()) do
-            processVFX(child)
-        end
-        return
-    end
-
-    processVFX(obj)
+    if isEssential(obj) then return end
 
     if obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
-        obj.Transparency = 1
-        obj.LocalTransparencyModifier = 1
-        obj.CastShadow = false
-        pcall(function() obj:Destroy() end)
-    elseif obj:IsA("Model") or obj:IsA("Folder") then
-        pcall(function() obj:Destroy() end)
+        pcall(function()
+            obj.Transparency = 1
+            obj.CastShadow = false
+            obj.Material = Enum.Material.SmoothPlastic
+        end)
     end
 end
 
--- 6. Làm trong suốt hoàn toàn nước biển (Terrain Water)
-local function cleanTerrain()
-    pcall(function()
-        local terrain = Workspace.Terrain
-        terrain.WaterTransparency = 1
-        terrain.WaterWaveSize = 0
-        terrain.WaterWaveSpeed = 0
-        terrain.WaterReflectance = 0
-        terrain:Clear()
+-- Quét ẩn Map toàn bộ Workspace
+for _, v in ipairs(Workspace:GetDescendants()) do
+    task.spawn(optimizeObject, v)
+end
+
+-- Làm trong suốt nước biển
+pcall(function()
+    local terrain = Workspace.Terrain
+    terrain.WaterTransparency = 1
+    terrain.WaterWaveSize = 0
+    terrain.WaterWaveSpeed = 0
+    terrain.WaterReflectance = 0
+end)
+
+-- Tự động xóa VFX chiêu mới khi xài skill
+Workspace.DescendantAdded:Connect(function(v)
+    task.spawn(function()
+        cleanVFX(v)
     end)
-end
-
--- VÒNG LẶP KHÓA LIÊN TỤC TRÊN MỖI FRAME (Chống Blox Fruits tự tải lại Map/VFX)
-RunService.RenderStepped:Connect(function()
-    cleanTerrain()
-    cleanLighting()
-    
-    for _, child in ipairs(Workspace:GetChildren()) do
-        if child ~= baseplate and child ~= Workspace.Terrain then
-            processMapObject(child)
-        end
-    end
-    
-    -- Xóa các vòng sáng / Flash màu trên Camera và GUI
-    local camera = Workspace.CurrentCamera
-    if camera then
-        for _, child in ipairs(camera:GetChildren()) do
-            processVFX(child)
-            if child:IsA("BasePart") or child:IsA("MeshPart") then
-                child.Transparency = 1
-            end
-        end
-    end
 end)
