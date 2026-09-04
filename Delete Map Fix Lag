@@ -3,26 +3,27 @@ local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 
-local LocalPlayer = Players.LocalPlayer
+-- 1. ÉP ĐỒ HOẠ ROBLOX VỀ MỨC THẤP NHẤT (LEVEL 1)
+pcall(function()
+    settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+end)
 
--- 1. Giảm Tải Địa Hình & Nước Biển (Tăng FPS GPU)
+-- 2. XÓA SẠCH NƯỚC BIỂN TERRAIN (TẮT HOÀN TOÀN SÓNG BIỂN)
 local Terrain = Workspace:FindFirstChildOfClass("Terrain")
 if Terrain then
     pcall(function()
+        Terrain:Clear() -- Xóa toàn bộ Nước Biển 3D, mất 100% sóng
         Terrain.WaterWaveSize = 0
         Terrain.WaterWaveSpeed = 0
-        Terrain.WaterReflectance = 0
-        Terrain.WaterTransparency = 0
-        Terrain.Decoration = false
     end)
 end
 
--- 2. Tắt Ánh Sáng & Bóng Râm (Tắt hoàn toàn hiệu ứng đồ họa nặng)
+-- 3. TẮT ÁNH SÁNG & BÓNG RÂM
 Lighting.GlobalShadows = false
 Lighting.FogEnd = 9e9
 Lighting.Brightness = 1
-Lighting.OutdoorAmbient = Color3.fromRGB(120, 120, 120)
-Lighting.Ambient = Color3.fromRGB(120, 120, 120)
+Lighting.OutdoorAmbient = Color3.fromRGB(150, 150, 150)
+Lighting.Ambient = Color3.fromRGB(150, 150, 150)
 
 for _, v in ipairs(Lighting:GetChildren()) do
     if v:IsA("PostEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") or v:IsA("Atmosphere") then
@@ -30,7 +31,7 @@ for _, v in ipairs(Lighting:GetChildren()) do
     end
 end
 
--- 3. Tạo Sàn Mặt Biển Nhẹ (Không dùng chất liệu rườm rà)
+-- 4. TẠO SÀN MẶT BIỂN (ĐỘ CAO Y = 0)
 local platform = Workspace:FindFirstChild("XDM_WaterPlatform")
 if not platform then
     platform = Instance.new("Part")
@@ -40,85 +41,59 @@ if not platform then
     platform.Anchored = true
     platform.CanCollide = true
     platform.Material = Enum.Material.SmoothPlastic
-    platform.Transparency = 0.5
-    platform.Color = Color3.fromRGB(50, 50, 50)
+    platform.Transparency = 0.6
+    platform.Color = Color3.fromRGB(40, 40, 40)
     platform.Parent = Workspace
 end
 
--- 4. Bỏ qua NPC / Quái / Người chơi
-local function isEntity(obj)
-    if not obj then return false end
-    if obj == platform or obj.Name == "XDM_WaterPlatform" then return true end
-
-    -- Giữ nguyên Người chơi
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Character and (obj == p.Character or obj:IsDescendantOf(p.Character)) then
-            return true
+-- 5. HÀM TÀNG HÌNH MAP & XÓA VFX (TỐI ƯU SIÊU NHẸ)
+local function processFast(v)
+    -- Nếu là NPC / Quái / Player -> Bỏ qua, giữ nguyên hiển thị
+    local parent = v.Parent
+    if parent then
+        local pName = parent.Name
+        if pName == "NPCs" or pName == "Enemies" or pName == "Characters" or parent:FindFirstChildOfClass("Humanoid") then
+            if v:IsA("BasePart") then
+                v.Transparency = 0
+            end
+            return
         end
     end
 
-    -- Giữ nguyên NPC, Quái, Thuyền, Quest
-    local model = obj:FindFirstAncestorOfClass("Model")
-    if model then
-        if model.Parent and (model.Parent.Name == "NPCs" or model.Parent.Name == "Enemies" or model.Parent.Name == "Characters") then
-            return true
-        end
-        if model:FindFirstChildOfClass("Humanoid") or model:FindFirstChildOfClass("ProximityPrompt") or model:FindFirstChildOfClass("ClickDetector") then
-            return true
-        end
-        local name = model.Name:lower()
-        if name:find("npc") or name:find("quest") or name:find("enemy") or name:find("dealer") or name:find("gacha") or name:find("merchant") or name:find("blox") or name:find("boat") then
-            return true
-        end
-    end
-
-    return false
-end
-
--- 5. Xử lý Vật thể (Xóa VFX, Ẩn Map)
-local function processObject(v)
-    -- Nếu là NPC / Quái / Player -> Giữ nguyên hiển thị
-    if isEntity(v) then
-        if v:IsA("BasePart") then
-            v.Transparency = 0
-            v.CanTouch = true
-            v.CanQuery = true
-        end
+    -- Xóa ngay lập tức các hiệu ứng rác tốn RAM/FPS
+    if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Highlight") or v:IsA("Explosion") or v:IsA("Decal") or v:IsA("Texture") or v:IsA("Light") then
+        pcall(function() v:Destroy() end)
         return
     end
 
-    -- Xóa ngay các hiệu ứng hạt/chiêu đánh tốn FPS
-    if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Highlight") or v:IsA("SelectionBox") or v:IsA("Explosion") then
-        pcall(function() v:Destroy() end)
-    elseif v:IsA("Light") then
-        pcall(function() v:Destroy() end)
-    -- Tàng hình các khối gạch Map (Địa hình, Núi, Nhà)
-    elseif v:IsA("BasePart") or v:IsA("MeshPart") or v:IsA("UnionOperation") then
-        pcall(function()
-            v.Transparency = 1
-            v.CastShadow = false
-        end)
+    -- Tàng hình các khối gạch Đảo/Nhà cửa
+    if v:IsA("BasePart") or v:IsA("MeshPart") or v:IsA("UnionOperation") then
+        if v ~= platform then
+            pcall(function()
+                v.Transparency = 1
+                v.CastShadow = false
+            end)
+        end
     end
 end
 
--- 6. Tối ưu tương tác NPC qua Service chuyên dụng (Không tốn CPU)
+-- 6. TƯƠNG TÁC NPC MƯỢT 0 GIÂY (Không tốn CPU)
 ProximityPromptService.PromptShown:Connect(function(prompt)
     pcall(function()
         prompt.Enabled = true
-        prompt.HoldDuration = 0 -- Nhấn ăn ngay 0s
-        prompt.RequiresLineOfSight = false -- Bấm xuyên vật cản
-        prompt.MaxActivationDistance = 60 -- Tăng khoảng cách bấm
+        prompt.HoldDuration = 0
+        prompt.RequiresLineOfSight = false
+        prompt.MaxActivationDistance = 60
     end)
 end)
 
--- 7. Quét Map dạng Chia Nhỏ (Batching) để tránh đơ máy
+-- 7. CHẠY CHIA NHỎ ĐỢT VẬT THỂ (Mỗi lần 100 cái để điện thoại không bị giật)
 task.spawn(function()
-    local allObjects = Workspace:GetDescendants()
-    for i = 1, #allObjects do
-        processObject(allObjects[i])
-        -- Cứ sau 250 vật thể thì nghỉ 1 khung hình ngắn để nhường CPU cho game
-        if i % 250 == 0 then
-            task.wait()
+    local descendants = Workspace:GetDescendants()
+    for i = 1, #descendants do
+        processFast(descendants[i])
+        if i % 100 == 0 then
+            task.wait() -- Nhường CPU thở
         end
     end
 end)
@@ -126,6 +101,6 @@ end)
 -- Quét vật thể mới sinh ra
 Workspace.DescendantAdded:Connect(function(v)
     task.spawn(function()
-        processObject(v)
+        processFast(v)
     end)
 end)
