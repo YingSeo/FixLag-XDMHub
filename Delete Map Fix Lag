@@ -157,30 +157,54 @@ task.spawn(function()
         return false
     end
 
-    local function cleanObject(v)
-        if isProtected(v) then return end
+    local function clearVFX(v)
+        if isProtected(v) then return false end
 
-        if v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Highlight") or v:IsA("SelectionBox") then
-            v:Destroy()
-            return
+        if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Highlight") or v:IsA("SelectionBox") or v:IsA("Explosion") then
+            pcall(function()
+                v.Enabled = false
+                v:Destroy()
+            end)
+            return true
         end
 
-        if v:IsA("Light") then
-            v:Destroy()
-            return
+        if v:IsA("Light") or v:IsA("PostEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") then
+            pcall(function() v:Destroy() end)
+            return true
         end
 
-        if v:IsA("Decal") or v:IsA("Texture") then
-            v:Destroy()
-            return
+        if v:IsA("Decal") or v:IsA("Texture") or v:IsA("SurfaceAppearance") then
+            pcall(function() v:Destroy() end)
+            return true
         end
 
         if v:IsA("MeshPart") or v:IsA("BasePart") then
-            if v.Name:lower():find("water") or v.Name:lower():find("ocean") or v.Name:lower():find("sea") then
+            local name = v.Name:lower()
+            if name:find("effect") or name:find("vfx") or name:find("skill") or name:find("aura") or name:find("slash") or name:find("blast") or name:find("hit") or name:find("particle") or name:find("ring") or name:find("flash") or name:find("beam") or name:find("magic") or name:find("circle") then
+                pcall(function()
+                    v.Transparency = 1
+                    v:Destroy()
+                end)
+                return true
+            end
+        end
+
+        return false
+    end
+
+    local function cleanMapObject(v)
+        if isProtected(v) then return end
+        if clearVFX(v) then return end
+
+        if v:IsA("MeshPart") or v:IsA("BasePart") then
+            local name = v.Name:lower()
+            if name:find("water") or name:find("ocean") or name:find("sea") then
                 v.Transparency = 1
-            else
+            elseif name:find("ground") or name:find("floor") or name:find("base") or name:find("grass") or name:find("sand") or name:find("land") or name:find("terrain") then
                 v.Material = Enum.Material.SmoothPlastic
-                v.Reflectance = 0
+                v.Color = Color3.fromRGB(80, 80, 80)
+            else
+                v.Transparency = 1
             end
         end
     end
@@ -188,7 +212,7 @@ task.spawn(function()
     local allInstances = Workspace:GetDescendants()
     local count = 0
     for _, v in ipairs(allInstances) do
-        pcall(cleanObject, v)
+        pcall(cleanMapObject, v)
         count = count + 1
         if count % 120 == 0 then
             task.wait()
@@ -198,27 +222,23 @@ task.spawn(function()
     Workspace.DescendantAdded:Connect(function(v)
         task.spawn(function()
             if isProtected(v) then return end
-            if v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Highlight") then
-                v:Destroy()
-            elseif v:IsA("ColorCorrectionEffect") or v:IsA("BlurEffect") or v:IsA("PostEffect") then
-                v:Destroy()
-            end
+            clearVFX(v)
         end)
     end)
 
-    pcall(function()
-        local camera = Workspace.CurrentCamera
+    local camera = Workspace.CurrentCamera
+    if camera then
         camera.ChildAdded:Connect(function(child)
-            if child:IsA("PostEffect") or child:IsA("DepthOfFieldEffect") or child:IsA("ColorCorrectionEffect") or child:IsA("BlurEffect") then
-                child:Destroy()
-            end
+            task.spawn(function()
+                clearVFX(child)
+            end)
         end)
         for _, child in ipairs(camera:GetChildren()) do
-            if child:IsA("PostEffect") or child:IsA("DepthOfFieldEffect") or child:IsA("ColorCorrectionEffect") or child:IsA("BlurEffect") then
-                child:Destroy()
-            end
+            task.spawn(function()
+                clearVFX(child)
+            end)
         end
-    end)
+    end
 
     showNotification("XDM Hub - Fix Lag: Load Xong!")
 end)
