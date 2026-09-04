@@ -1,26 +1,23 @@
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
-local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- 1. Tạo Sàn Ngay Mặt Nước Biển (Tọa độ Y = 0)
-local platform = Workspace:FindFirstChild("XDM_WaterPlatform")
-if not platform then
-    platform = Instance.new("Part")
-    platform.Name = "XDM_WaterPlatform"
-    platform.Size = Vector3.new(60000, 2, 60000)
-    platform.Position = Vector3.new(0, -1, 0) -- Mặt trên sàn đúng Y = 0 (Mặt nước)
-    platform.Anchored = true
-    platform.CanCollide = true
-    platform.Material = Enum.Material.SmoothPlastic
-    platform.Transparency = 0.3 -- Hơi trong suốt nhẹ giống mặt nước
-    platform.Color = Color3.fromRGB(0, 120, 200)
-    platform.Parent = Workspace
+-- 1. Giảm Tải Địa Hình & Nước Biển (Tăng FPS GPU)
+local Terrain = Workspace:FindFirstChildOfClass("Terrain")
+if Terrain then
+    pcall(function()
+        Terrain.WaterWaveSize = 0
+        Terrain.WaterWaveSpeed = 0
+        Terrain.WaterReflectance = 0
+        Terrain.WaterTransparency = 0
+        Terrain.Decoration = false
+    end)
 end
 
--- 2. Tắt hiệu ứng ánh sáng & Bầu trời (Tăng FPS)
+-- 2. Tắt Ánh Sáng & Bóng Râm (Tắt hoàn toàn hiệu ứng đồ họa nặng)
 Lighting.GlobalShadows = false
 Lighting.FogEnd = 9e9
 Lighting.Brightness = 1
@@ -33,19 +30,34 @@ for _, v in ipairs(Lighting:GetChildren()) do
     end
 end
 
--- 3. Nhận diện NPC / Quái / Player / Thuyền
+-- 3. Tạo Sàn Mặt Biển Nhẹ (Không dùng chất liệu rườm rà)
+local platform = Workspace:FindFirstChild("XDM_WaterPlatform")
+if not platform then
+    platform = Instance.new("Part")
+    platform.Name = "XDM_WaterPlatform"
+    platform.Size = Vector3.new(60000, 2, 60000)
+    platform.Position = Vector3.new(0, -1, 0) -- Độ cao Y = 0
+    platform.Anchored = true
+    platform.CanCollide = true
+    platform.Material = Enum.Material.SmoothPlastic
+    platform.Transparency = 0.5
+    platform.Color = Color3.fromRGB(50, 50, 50)
+    platform.Parent = Workspace
+end
+
+-- 4. Bỏ qua NPC / Quái / Người chơi
 local function isEntity(obj)
     if not obj then return false end
     if obj == platform or obj.Name == "XDM_WaterPlatform" then return true end
 
-    -- Người chơi
+    -- Giữ nguyên Người chơi
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Character and (obj == p.Character or obj:IsDescendantOf(p.Character)) then
             return true
         end
     end
 
-    -- NPC, Quái, Thuyền, Quest
+    -- Giữ nguyên NPC, Quái, Thuyền, Quest
     local model = obj:FindFirstAncestorOfClass("Model")
     if model then
         if model.Parent and (model.Parent.Name == "NPCs" or model.Parent.Name == "Enemies" or model.Parent.Name == "Characters") then
@@ -63,50 +75,24 @@ local function isEntity(obj)
     return false
 end
 
--- 4. Fix Nút Tương Tác NPC (Bấm ăn liền, không cần giữ)
-local function fixNPCInteraction(v)
-    if v:IsA("ProximityPrompt") then
-        pcall(function()
-            v.Enabled = true
-            v.HoldDuration = 0
-            v.RequiresLineOfSight = false
-            v.MaxActivationDistance = 60
-        end)
-    elseif v:IsA("ClickDetector") then
-        pcall(function()
-            v.MaxActivationDistance = 60
-        end)
-    end
-end
-
--- 5. Xử lý Tàng Hình Map & Hiện Rõ NPC
+-- 5. Xử lý Vật thể (Xóa VFX, Ẩn Map)
 local function processObject(v)
-    if v:IsA("ProximityPrompt") or v:IsA("ClickDetector") then
-        fixNPCInteraction(v)
-        return
-    end
-
-    -- NẾU LÀ NPC / QUÁI / PLAYER -> HIỆN RÕ NGUYÊN BẢN
+    -- Nếu là NPC / Quái / Player -> Giữ nguyên hiển thị
     if isEntity(v) then
         if v:IsA("BasePart") then
-            pcall(function()
-                v.Transparency = 0
-                v.CanTouch = true
-                v.CanQuery = true
-            end)
+            v.Transparency = 0
+            v.CanTouch = true
+            v.CanQuery = true
         end
         return
     end
 
-    -- XÓA VFX CHIÊU / HIỆU ỨNG RÁC
+    -- Xóa ngay các hiệu ứng hạt/chiêu đánh tốn FPS
     if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Highlight") or v:IsA("SelectionBox") or v:IsA("Explosion") then
-        pcall(function()
-            v.Enabled = false
-            v:Destroy()
-        end)
-    elseif v:IsA("Light") or v:IsA("PostEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BlurEffect") then
         pcall(function() v:Destroy() end)
-    -- TÀNG HÌNH MAP (NÚI ĐÁ, NHÀ CỬA, CÂY CỐI)
+    elseif v:IsA("Light") then
+        pcall(function() v:Destroy() end)
+    -- Tàng hình các khối gạch Map (Địa hình, Núi, Nhà)
     elseif v:IsA("BasePart") or v:IsA("MeshPart") or v:IsA("UnionOperation") then
         pcall(function()
             v.Transparency = 1
@@ -115,27 +101,31 @@ local function processObject(v)
     end
 end
 
--- Quét toàn bộ Map
+-- 6. Tối ưu tương tác NPC qua Service chuyên dụng (Không tốn CPU)
+ProximityPromptService.PromptShown:Connect(function(prompt)
+    pcall(function()
+        prompt.Enabled = true
+        prompt.HoldDuration = 0 -- Nhấn ăn ngay 0s
+        prompt.RequiresLineOfSight = false -- Bấm xuyên vật cản
+        prompt.MaxActivationDistance = 60 -- Tăng khoảng cách bấm
+    end)
+end)
+
+-- 7. Quét Map dạng Chia Nhỏ (Batching) để tránh đơ máy
 task.spawn(function()
-    for _, v in ipairs(Workspace:GetDescendants()) do
-        processObject(v)
+    local allObjects = Workspace:GetDescendants()
+    for i = 1, #allObjects do
+        processObject(allObjects[i])
+        -- Cứ sau 250 vật thể thì nghỉ 1 khung hình ngắn để nhường CPU cho game
+        if i % 250 == 0 then
+            task.wait()
+        end
     end
 end)
 
--- Tự động quét vật thể mới xuất hiện
+-- Quét vật thể mới sinh ra
 Workspace.DescendantAdded:Connect(function(v)
     task.spawn(function()
         processObject(v)
     end)
-end)
-
--- Vòng lặp giữ cho nút bấm NPC luôn sẵn sàng
-RunService.Heartbeat:Connect(function()
-    for _, prompt in ipairs(Workspace:GetDescendants()) do
-        if prompt:IsA("ProximityPrompt") then
-            prompt.Enabled = true
-            prompt.HoldDuration = 0
-            prompt.RequiresLineOfSight = false
-        end
-    end
 end)
