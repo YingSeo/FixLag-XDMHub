@@ -88,6 +88,8 @@ task.spawn(function()
     Lighting.GlobalShadows = false
     Lighting.FogEnd = 9e9
     Lighting.Brightness = 1
+    Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+    Lighting.Ambient = Color3.fromRGB(128, 128, 128)
     
     for _, child in ipairs(Lighting:GetChildren()) do
         if child:IsA("PostEffect") or child:IsA("Atmosphere") or child:IsA("Sky") or child:IsA("Clouds") or child:IsA("SunRaysEffect") or child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("ColorCorrectionEffect") then
@@ -138,19 +140,16 @@ task.spawn(function()
             return true
         end
 
-        local name = obj.Name:lower()
-
-        if name:find("frozen") or name:find("prehistoric") or name:find("kitsune") then
-            return true
-        end
-
-        local current = obj.Parent
+        local current = obj
         while current and current ~= Workspace do
             local cName = current.Name:lower()
             if cName == "enemies" or cName == "npcs" or cName == "boats" or cName == "characters" or cName == "players" then
                 return true
             end
-            if cName:find("frozen") or cName:find("prehistoric") or cName:find("kitsune") or cName:find("boat") or cName:find("ship") or cName:find("leviathan") or cName:find("seaevent") then
+            if cName:find("boat") or cName:find("ship") or cName:find("leviathan") or cName:find("seaevent") then
+                return true
+            end
+            if current:FindFirstChildOfClass("Humanoid") then
                 return true
             end
             current = current.Parent
@@ -160,18 +159,15 @@ task.spawn(function()
         if Workspace:FindFirstChild("NPCs") and obj:IsDescendantOf(Workspace.NPCs) then return true end
         if Workspace:FindFirstChild("Boats") and obj:IsDescendantOf(Workspace.Boats) then return true end
 
+        local name = obj.Name:lower()
         if name:find("boat") or name:find("ship") or name:find("leviathan") or name:find("seaevent") or name:find("npc") or name:find("enemy") then
-            return true
-        end
-
-        if obj:FindFirstChildOfClass("Humanoid") then
             return true
         end
 
         return false
     end
 
-    local function killVFX(v)
+    local function killVFXAndColor(v)
         if isProtected(v) then return end
 
         if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Highlight") or v:IsA("SelectionBox") or v:IsA("Explosion") then
@@ -183,22 +179,29 @@ task.spawn(function()
             pcall(function() v:Destroy() end)
         elseif v:IsA("Decal") or v:IsA("Texture") or v:IsA("SurfaceAppearance") then
             pcall(function() v:Destroy() end)
+        elseif v:IsA("SpecialMesh") then
+            pcall(function() v:Destroy() end)
+        elseif v:IsA("BasePart") or v:IsA("MeshPart") then
+            pcall(function()
+                v.Transparency = 1
+                v.CastShadow = false
+            end)
         end
     end
 
-    local function processMapItem(v)
+    local function wipeObject(v)
         if isProtected(v) then return end
-        killVFX(v)
+        killVFXAndColor(v)
 
         if v:IsA("Model") or v:IsA("Folder") then
-            local hasProtected = false
+            local protected = false
             for _, child in ipairs(v:GetChildren()) do
                 if isProtected(child) then
-                    hasProtected = true
+                    protected = true
                     break
                 end
             end
-            if not hasProtected then
+            if not protected then
                 pcall(function() v:Destroy() end)
             end
         elseif v:IsA("BasePart") or v:IsA("MeshPart") then
@@ -206,40 +209,28 @@ task.spawn(function()
         end
     end
 
-    local mapFolder = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("Islands") or Workspace:FindFirstChild("Locations") or Workspace:FindFirstChild("World")
-    if mapFolder then
-        local children = mapFolder:GetChildren()
-        local count = 0
-        for _, v in ipairs(children) do
-            pcall(processMapItem, v)
-            count = count + 1
-            if count % 40 == 0 then
-                task.wait()
-            end
-        end
-    end
-
-    local wsChildren = Workspace:GetChildren()
-    local wsCount = 0
-    for _, v in ipairs(wsChildren) do
-        if v ~= mapFolder and not isProtected(v) and v.Name ~= "Terrain" and v.Name ~= "Camera" then
-            pcall(processMapItem, v)
-            wsCount = wsCount + 1
-            if wsCount % 40 == 0 then
-                task.wait()
-            end
+    local descendants = Workspace:GetDescendants()
+    local count = 0
+    for _, v in ipairs(descendants) do
+        pcall(wipeObject, v)
+        count = count + 1
+        if count % 50 == 0 then
+            task.wait()
         end
     end
 
     Workspace.DescendantAdded:Connect(function(v)
         task.spawn(function()
             if isProtected(v) then return end
-            killVFX(v)
-            if v:IsA("BasePart") or v:IsA("MeshPart") then
-                local parent = v.Parent
-                local pName = parent and parent.Name:lower() or ""
-                if pName:find("effect") or pName:find("vfx") or pName:find("skill") or pName:find("attack") or pName:find("combat") then
-                    pcall(function() v:Destroy() end)
+            killVFXAndColor(v)
+        end)
+    end)
+
+    Lighting.ChildAdded:Connect(function(child)
+        task.spawn(function()
+            if child:IsA("PostEffect") or child:IsA("Atmosphere") or child:IsA("Sky") or child:IsA("Clouds") or child:IsA("SunRaysEffect") or child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("ColorCorrectionEffect") then
+                if child.Name ~= "XDMSky" then
+                    child:Destroy()
                 end
             end
         end)
@@ -249,15 +240,27 @@ task.spawn(function()
     if camera then
         camera.ChildAdded:Connect(function(child)
             task.spawn(function()
-                killVFX(child)
+                killVFXAndColor(child)
             end)
         end)
         for _, child in ipairs(camera:GetChildren()) do
             task.spawn(function()
-                killVFX(child)
+                killVFXAndColor(child)
             end)
         end
     end
+
+    RunService.Stepped:Connect(function()
+        for _, gui in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
+            if gui:IsA("ScreenGui") and gui.Name ~= "XDM_FixLag_UI" then
+                for _, effect in ipairs(gui:GetDescendants()) do
+                    if effect:IsA("ImageLabel") and (effect.Name:lower():find("v4") or effect.Name:lower():find("haki") or effect.Name:lower():find("flash") or effect.Name:lower():find("overlay") or effect.Name:lower():find("color")) then
+                        effect.Visible = false
+                    end
+                end
+            end
+        end
+    end)
 
     showNotification("XDM Hub - Fix Lag: Load Xong!")
 end)
