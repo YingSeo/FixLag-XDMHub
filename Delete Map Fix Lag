@@ -1,14 +1,14 @@
 -- ============================================================
---  BLOX FRUITS - FULL MAP DESTROYER v3.0
---  Executor: Delta X | Ultra Fast Bulk Clean
---  Target: Ocean/Sea Zone như hình + toàn bộ map
+--  BLOX FRUITS - SMART MAP CLEANER v4.0
+--  Executor: Delta X
+--  FIX: NPC safe, no interaction bug, no model errors
+--  TARGET: Xóa buildings/pillars/deco, GIỮ NPC nguyên vẹn
 -- ============================================================
 
 local Players    = game:GetService("Players")
 local Workspace  = game:GetService("Workspace")
 local Lighting   = game:GetService("Lighting")
 local StarterGui = game:GetService("StarterGui")
-local RunService = game:GetService("RunService")
 
 local LP = Players.LocalPlayer
 
@@ -23,46 +23,47 @@ local function Notify(title, text, dur)
     end)
 end
 
-Notify("MrDon v3.0", "Đang khởi động Full Map Destroyer...", 3)
+Notify("MrDon v4.0", "Smart Map Cleaner đang khởi động...", 3)
+print("[MrDon v4.0] ▶ SMART MAP CLEANER START")
 
 -- ============================================================
--- SECTION 1: WHITELIST - TUYỆT ĐỐI KHÔNG XÓA
+-- SECTION 1: DETECT NPC - TRÁI TIM CỦA FIX NÀY
 -- ============================================================
-local KEEP_CLASS = {
-    ["Terrain"]         = true,
-    ["Camera"]          = true,
-    ["Humanoid"]        = true,
-    ["HumanoidRootPart"]= true,
-    ["AnimationController"] = true,
-    ["Script"]          = true,
-    ["LocalScript"]     = true,
-    ["RemoteEvent"]     = true,
-    ["RemoteFunction"]  = true,
-    ["BindableEvent"]   = true,
-    ["BindableFunction"]= true,
-    ["ModuleScript"]    = true,
-    ["Configuration"]   = true,
-    ["StringValue"]     = true,
-    ["IntValue"]        = true,
-    ["BoolValue"]       = true,
-    ["NumberValue"]     = true,
-    ["ObjectValue"]     = true,
-    ["Folder"]          = true,
-    ["Model"]           = true,   -- giữ Model container, xóa nội dung bên trong
-}
+-- Một object là NPC nếu ancestor Model của nó có Humanoid
+-- => KHÔNG BAO GIỜ đụng vào bất kỳ thứ gì bên trong NPC model
 
-local KEEP_NAME_EXACT = {
-    ["SpawnLocation"]  = true,
-    ["Baseplate"]      = true,
-    ["Sky"]            = true,
-    ["Sun"]            = true,
-}
+local npcCache = {} -- cache để không check lại nhiều lần
 
--- Parts thuộc character player => không đụng
-local function IsPlayerCharacterPart(obj)
+local function GetRootModel(obj)
+    local cur = obj
+    while cur.Parent and cur.Parent ~= Workspace do
+        cur = cur.Parent
+    end
+    return cur
+end
+
+local function IsNPC(obj)
+    -- Check từ cache trước
+    local root = GetRootModel(obj)
+    if not root then return false end
+
+    local rootName = tostring(root)
+    if npcCache[rootName] ~= nil then
+        return npcCache[rootName]
+    end
+
+    -- Check có Humanoid không
+    local hasHumanoid = root:FindFirstChildOfClass("Humanoid") ~= nil
+        or root:FindFirstChildWhichIsA("Humanoid", true) ~= nil
+
+    npcCache[rootName] = hasHumanoid
+    return hasHumanoid
+end
+
+-- Check player character
+local function IsPlayerPart(obj)
     for _, p in ipairs(Players:GetPlayers()) do
-        local char = p.Character
-        if char and (obj == char or obj:IsDescendantOf(char)) then
+        if p.Character and obj:IsDescendantOf(p.Character) then
             return true
         end
     end
@@ -70,235 +71,245 @@ local function IsPlayerCharacterPart(obj)
 end
 
 -- ============================================================
--- SECTION 2: DANH SÁCH CLASS CẦN XÓA (FULL)
+-- SECTION 2: BLOX FRUITS NPC NAME LIST (KHÔNG ĐƯỢC XÓA)
 -- ============================================================
-local DESTROY_CLASS = {
-    -- Visual / Render nặng nhất
-    ["ParticleEmitter"]     = true,
-    ["Trail"]               = true,
-    ["Beam"]                = true,
-    ["Smoke"]               = true,
-    ["Fire"]                = true,
-    ["Sparkles"]            = true,
-
-    -- Lighting objects
-    ["PointLight"]          = true,
-    ["SpotLight"]           = true,
-    ["SurfaceLight"]        = true,
-
-    -- Texture / Decal
-    ["Decal"]               = true,
-    ["Texture"]             = true,
-
-    -- GUI trên map (billboard)
-    ["BillboardGui"]        = true,
-    ["SurfaceGui"]          = true,
-
-    -- Sound
-    ["Sound"]               = true,
-
-    -- Mesh thừa
-    ["SpecialMesh"]         = true,
-    ["SelectionBox"]        = true,
-    ["SelectionSphere"]     = true,
-
-    -- Constraint thừa
-    ["BodyVelocity"]        = true,
-    ["BodyGyro"]            = true,
-    ["BodyPosition"]        = true,
-    ["BodyAngularVelocity"] = true,
-    ["VectorForce"]         = true,
-    ["Torque"]              = true,
-    ["LinearVelocity"]      = true,
-    ["AngularVelocity"]     = true,
-
-    -- Highlight / UI 3D
-    ["Highlight"]           = true,
-    ["BoxHandleAdornment"]  = true,
-    ["SphereHandleAdornment"]= true,
-    ["CylinderHandleAdornment"]= true,
+-- Các Model tên này ở root Workspace = NPC => bỏ qua toàn bộ
+local NPC_ROOT_NAMES = {
+    -- Quest givers
+    "Boat Dealer","Blox Fruit Dealer","Bounty Hunter","Sword Dealer",
+    "Upgrade","Enchant","Cyborg Scientist","Advanced Upgrade",
+    "Master of Auras","Arowe","Alchemist","Cook","Pirate Recruit",
+    "Marine Recruit","Greybeard","Swan","Factory Staff",
+    "Galley Captain","King Red Head","Fajita","Don Swan",
+    "Smoke Admiral","Yeti","Diamond","Wysper","Thunder God",
+    "Magma Admiral","Tide Keeper","Darkbeard","Buddha",
+    "Dough King","Order","Cake Prince","Isle Priest",
+    "Longma","Captain Elephant","Tiki Outpost Islander",
+    -- Generic NPC types
+    "NPC","Dealer","Trader","Instructor","Guard","Crew",
+    "Pirate","Marine","Bandit","Mercenary","Fighter",
+    "Master","Teacher","Selector","Shipwright","Prisoner",
+    -- Functional NPC
+    "Mysterious Scientist","Mad Scientist","Sick Man",
+    "Hungry Man","Wealthy Citizen","Rich Man","Baby Yoda",
+    "Military Detective","Horned Man","Zapdos","Chief",
+    "Manager","Bartilo","Izuku","Saber Expert","Raid Boss",
 }
 
--- ============================================================
--- SECTION 3: TỪ KHÓA TÊN OBJECT CẦN XÓA (FULL OCEAN/MAP)
--- ============================================================
--- BasePart / MeshPart / UnionOperation khớp tên này => destroy
-local DESTROY_NAME_KEYWORDS = {
-    -- OCEAN / SEA (ưu tiên hàng đầu - như hình boss man)
-    "wave","foam","splash","ocean","sea","water","ripple",
-    "bubble","current","tide","whirlpool","puddle","lake",
-    "river","stream","wetland","aqua","marine","naval",
+local NPC_NAME_SET = {}
+for _, n in ipairs(NPC_ROOT_NAMES) do
+    NPC_NAME_SET[string.lower(n)] = true
+end
 
-    -- CÂY / THỰC VẬT
-    "tree","bush","grass","flower","leaf","vine","plant",
-    "fern","shrub","palm","bamboo","mushroom","reed","algae",
-    "moss","ivy","twig","branch","bark","trunk","stump","root",
-
-    -- ĐÁ / ĐỊA HÌNH THỪA
-    "rock","pebble","boulder","cliff","stone","crystal",
-    "debris","rubble","gravel","sand","dirt","mud","soil",
-
-    -- KHÍ TƯỢNG / TRỜI
-    "cloud","fog","mist","rain","snow","smoke","ash","dust",
-    "storm","lightning","thunder","haze","weather","wind",
-    "tornado","hurricane","blizzard","drizzle","sleet",
-
-    -- ÁNH SÁNG / GLOW THỪA
-    "glow","beam","flare","aura","shine","shimmer","sparkle",
-    "glimmer","radiance","halo","bloom","lens","fleck",
-
-    -- TRANG TRÍ MAP
-    "fence","barrel","crate","chest","lantern","lamp","torch",
-    "sign","banner","flag","tent","carpet","cloth","curtain",
-    "bush","hedge","topiary","statue","pillar","column",
-    "arch","gate","wall","debris","ruin","rubble","wreck",
-    "dock","pier","boat","ship","anchor","rope","net",
-    "cage","chain","wood","plank","log","twig","hay","straw",
-
-    -- PLATFORM / ISLAND THỪA (giữ chỗ đứng nhưng xóa deco)
-    "deco","decoration","detail","prop","asset","filler",
-    "ambient","environment","nature","scenic","scenery",
-    "background","backdrop","scenicprop",
-
-    -- HIỆU ỨNG SKILL / COMBAT THỪA
-    "hitbox","trail","afterimage","echo","shadow_clone",
-    "impact","explosion","shockwave","slash","strike",
-}
-
--- ============================================================
--- SECTION 4: FAST BULK DESTROY ENGINE
--- ============================================================
-local destroyed = 0
-local skipped   = 0
-
-local function ShouldDestroy(obj)
-    -- Không phá character player
-    if IsPlayerCharacterPart(obj) then
-        skipped = skipped + 1
-        return false
+local function IsNPCByName(model)
+    if not model then return false end
+    local lname = string.lower(model.Name)
+    -- Check exact
+    if NPC_NAME_SET[lname] then return true end
+    -- Check partial (NPC, Dealer, etc.)
+    for key, _ in pairs(NPC_NAME_SET) do
+        if lname:find(key, 1, true) then return true end
     end
-
-    -- Giữ tên exact
-    if KEEP_NAME_EXACT[obj.Name] then
-        skipped = skipped + 1
-        return false
-    end
-
-    -- Giữ Camera và Terrain tuyệt đối
-    local cls = obj.ClassName
-    if cls == "Camera" or cls == "Terrain" then
-        return false
-    end
-
-    -- Xóa theo class (particle, light, sound, beam, v.v.)
-    if DESTROY_CLASS[cls] then
-        return true
-    end
-
-    -- Xóa BasePart/MeshPart/Union khớp keyword
-    if cls == "Part" or cls == "MeshPart" or cls == "UnionOperation"
-    or cls == "WedgePart" or cls == "CornerWedgePart" or cls == "TrussPart" then
-        local lname = string.lower(obj.Name)
-        for _, kw in ipairs(DESTROY_NAME_KEYWORDS) do
-            if lname:find(kw, 1, true) then
-                return true
-            end
-        end
-    end
-
     return false
 end
 
--- CORE: GetDescendants một lần, lọc, destroy batch
-local function BulkDestroy(parent)
-    local all = parent:GetDescendants()
-    local targets = {}
-
-    -- Pass 1: thu thập target (không destroy ngay, tránh iterator lỗi)
-    for i = 1, #all do
-        local obj = all[i]
-        if obj and obj.Parent ~= nil then
-            if ShouldDestroy(obj) then
-                targets[#targets + 1] = obj
-            end
+local function ShouldSkipRoot(root)
+    -- Là player character
+    for _, p in ipairs(Players:GetPlayers()) do
+        if root == p.Character then return true end
+    end
+    -- Tên là NPC
+    if IsNPCByName(root) then return true end
+    -- Có Humanoid bên trong
+    if root:IsA("Model") then
+        if root:FindFirstChildWhichIsA("Humanoid", true) then
+            return true
         end
     end
-
-    -- Pass 2: destroy toàn bộ
-    for i = 1, #targets do
-        pcall(function()
-            if targets[i] and targets[i].Parent then
-                targets[i]:Destroy()
-                destroyed = destroyed + 1
-            end
-        end)
-    end
-
-    return #targets
+    return false
 end
 
 -- ============================================================
--- SECTION 5: XÓA TERRAIN EFFECTS (OCEAN WAVE NHƯ HÌNH)
+-- SECTION 3: DANH SÁCH MAP OBJECTS CẦN XÓA (TINH CHỈNH)
+-- ============================================================
+-- CHỈ xóa các object rõ ràng là trang trí/map
+-- KHÔNG xóa theo keyword mơ hồ để tránh đụng NPC
+
+-- Class xóa vô điều kiện (kể cả trong NPC - CHỈ visual effects)
+local ALWAYS_DESTROY_CLASS = {
+    ["ParticleEmitter"] = true,
+    ["Trail"]           = true,
+    ["Beam"]            = true,
+    ["Smoke"]           = true,
+    ["Fire"]            = true,
+    ["Sparkles"]        = true,
+    ["Atmosphere"]      = true,
+    ["BloomEffect"]     = true,
+    ["BlurEffect"]      = true,
+    ["ColorCorrectionEffect"] = true,
+    ["SunRaysEffect"]   = true,
+    ["DepthOfFieldEffect"] = true,
+}
+
+-- Class xóa chỉ khi KHÔNG phải NPC/player
+local MAP_DESTROY_CLASS = {
+    ["PointLight"]      = true,
+    ["SpotLight"]       = true,
+    ["SurfaceLight"]    = true,
+    ["Decal"]           = true,
+    ["Texture"]         = true,
+    ["BillboardGui"]    = true,  -- chỉ trên map, NPC đã skip
+    ["SurfaceGui"]      = true,
+    ["Sound"]           = true,
+    ["SelectionBox"]    = true,
+    ["Highlight"]       = true,
+    ["SpecialMesh"]     = true,
+}
+
+-- Keyword xóa BasePart MAP (không phải NPC)
+-- Tập trung vào buildings/pillars như hình: đen, cao, dạng cột
+local MAP_PART_KEYWORDS = {
+    -- Buildings / Structures thừa (như pillars đen trong hình)
+    "pillar","column","beam_","railing","fence","post_",
+    "wall_","floor_","ceiling","roof","stair","step_",
+    "platform_deco","building_detail","prop_","decoration",
+    "deco_","detail_","trim_","frame_","border_","edge_",
+    "window_","door_frame","arch_","gate_","barricade",
+
+    -- Ocean / water effects
+    "wave","foam","splash","ripple","bubble","tide",
+    "whirlpool","current_","waterdrop","spray",
+
+    -- Thiên nhiên
+    "tree_","bush_","grass_","flower_","leaf_","vine_",
+    "plant_","fern_","shrub_","palm_","bamboo_","reed_",
+    "moss_","ivy_","stump_","rock_deco","pebble_",
+    "boulder_deco","cliff_deco","crystal_deco",
+
+    -- Thời tiết particle
+    "cloud_part","fog_part","mist_part","rain_drop",
+    "snowflake","ash_","dust_",
+
+    -- Đồ vật trang trí map
+    "barrel_","crate_deco","lantern_","lamp_deco","torch_",
+    "banner_","flag_","carpet_","cloth_","curtain_",
+    "statue_","anchor_","rope_","hay_","straw_",
+    "wreck_","ruin_","dock_deco","pier_deco",
+    "ambient_","scenery_","backdrop_","filler_",
+}
+
+local function MatchesMapKeyword(name)
+    local lname = string.lower(name)
+    for _, kw in ipairs(MAP_PART_KEYWORDS) do
+        if lname:find(kw, 1, true) then return true end
+    end
+    return false
+end
+
+-- ============================================================
+-- SECTION 4: SMART DESTROY LOGIC
+-- ============================================================
+local destroyed = 0
+
+local function SmartDestroy(obj)
+    if not obj or not obj.Parent then return end
+
+    local cls = obj.ClassName
+
+    -- 1. Visual effects: xóa kể cả trong NPC (chỉ particle/trail/beam)
+    --    NHƯNG không xóa nếu là player
+    if ALWAYS_DESTROY_CLASS[cls] then
+        if not IsPlayerPart(obj) then
+            pcall(function()
+                obj.Enabled = false  -- tắt trước
+                obj:Destroy()
+                destroyed = destroyed + 1
+            end)
+        end
+        return
+    end
+
+    -- 2. Mọi thứ còn lại: KHÔNG đụng NPC hoặc player
+    if IsPlayerPart(obj) then return end
+
+    -- Tìm root model
+    local root = GetRootModel(obj)
+    if root and root:IsA("Model") and ShouldSkipRoot(root) then
+        return  -- Bên trong NPC => bỏ qua
+    end
+
+    -- 3. Map-only class
+    if MAP_DESTROY_CLASS[cls] then
+        pcall(function()
+            obj:Destroy()
+            destroyed = destroyed + 1
+        end)
+        return
+    end
+
+    -- 4. BasePart/MeshPart theo keyword map
+    if cls == "Part" or cls == "MeshPart" or cls == "UnionOperation"
+    or cls == "WedgePart" or cls == "CornerWedgePart" or cls == "TrussPart" then
+        if MatchesMapKeyword(obj.Name) then
+            pcall(function()
+                obj:Destroy()
+                destroyed = destroyed + 1
+            end)
+        end
+    end
+end
+
+-- ============================================================
+-- SECTION 5: TERRAIN FIX (OCEAN NHƯ HÌNH)
 -- ============================================================
 local function NukeTerrain()
     pcall(function()
         local t = Workspace:FindFirstChildOfClass("Terrain")
         if not t then return end
-
-        -- Xóa hoàn toàn hiệu ứng nước
-        t.WaterWaveSize      = 0
-        t.WaterWaveSpeed     = 0
-        t.WaterReflectance   = 0
-        t.WaterTransparency  = 1
-        t.WaterColor         = Color3.fromRGB(0, 0, 0)
-
-        -- Tắt cỏ, trang trí terrain
-        t.Decoration         = false
-
-        -- Xóa tất cả children của Terrain (texture overlay, v.v.)
-        for _, child in ipairs(t:GetChildren()) do
-            pcall(function() child:Destroy() end)
-        end
+        t.WaterWaveSize     = 0
+        t.WaterWaveSpeed    = 0
+        t.WaterReflectance  = 0
+        t.WaterTransparency = 1
+        t.WaterColor        = Color3.fromRGB(30, 80, 140)
+        t.Decoration        = false
+        print("[MrDon] ✓ Terrain water nuked")
     end)
 end
 
 -- ============================================================
--- SECTION 6: NUKE LIGHTING
+-- SECTION 6: LIGHTING CLEAN
 -- ============================================================
 local function NukeLighting()
     pcall(function()
-        Lighting.GlobalShadows    = false
-        Lighting.ShadowSoftness   = 0
-        Lighting.Brightness       = 1
-        Lighting.Ambient          = Color3.fromRGB(130,130,130)
-        Lighting.OutdoorAmbient   = Color3.fromRGB(130,130,130)
-        Lighting.FogEnd           = 999999
-        Lighting.FogStart         = 999999
-        Lighting.ClockTime        = 14  -- ban ngày, không cần bóng tối
+        Lighting.GlobalShadows  = false
+        Lighting.ShadowSoftness = 0
+        Lighting.Brightness     = 1
+        Lighting.FogEnd         = 999999
+        Lighting.FogStart       = 999999
+        Lighting.Ambient        = Color3.fromRGB(128,128,128)
+        Lighting.OutdoorAmbient = Color3.fromRGB(128,128,128)
 
-        -- Xóa hết post-processing
         for _, fx in ipairs(Lighting:GetChildren()) do
             local c = fx.ClassName
             if c == "Atmosphere" or c == "BloomEffect" or c == "BlurEffect"
             or c == "ColorCorrectionEffect" or c == "SunRaysEffect"
-            or c == "DepthOfFieldEffect" or c == "BlackAndWhiteEffect" then
+            or c == "DepthOfFieldEffect" then
                 pcall(function() fx:Destroy() end)
             end
         end
+        print("[MrDon] ✓ Lighting cleaned")
     end)
 end
 
 -- ============================================================
--- SECTION 7: FPS CAP + RENDER OPTIMIZATION
+-- SECTION 7: FPS + PLAYER EFFECT REDUCE
 -- ============================================================
 local function OptimizeRender()
-    -- FPS cap
     pcall(function()
         if setfpscap then setfpscap(60)
         elseif syn and syn.set_fps_cap then syn.set_fps_cap(60) end
     end)
 
-    -- Tắt particle player khác
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LP and p.Character then
             for _, d in ipairs(p.Character:GetDescendants()) do
@@ -308,65 +319,113 @@ local function OptimizeRender()
             end
         end
     end
+    print("[MrDon] ✓ Render optimized")
 end
 
 -- ============================================================
--- SECTION 8: AUTO-WATCHER (xóa object mới spawn)
+-- SECTION 8: MAIN SCAN - 2-PASS BULK
+-- ============================================================
+local function RunScan()
+    -- Build NPC cache trước
+    for _, root in ipairs(Workspace:GetChildren()) do
+        if root:IsA("Model") then
+            local has = root:FindFirstChildWhichIsA("Humanoid", true) ~= nil
+            npcCache[tostring(root)] = has
+        end
+    end
+    print("[MrDon] ✓ NPC cache built: " .. #Workspace:GetChildren() .. " roots scanned")
+
+    -- GetDescendants 1 lần duy nhất
+    local all = Workspace:GetDescendants()
+    local targets = {}
+
+    -- Pass 1: collect
+    for i = 1, #all do
+        local obj = all[i]
+        if obj and obj.Parent then
+            local cls = obj.ClassName
+
+            -- Quick accept: particle effects (xóa mọi chỗ trừ player)
+            if ALWAYS_DESTROY_CLASS[cls] and not IsPlayerPart(obj) then
+                targets[#targets+1] = obj
+
+            -- Map class: cần check NPC
+            elseif MAP_DESTROY_CLASS[cls] and not IsPlayerPart(obj) then
+                local root = GetRootModel(obj)
+                if not (root and root:IsA("Model") and ShouldSkipRoot(root)) then
+                    targets[#targets+1] = obj
+                end
+
+            -- BasePart keyword: cần check NPC
+            elseif (cls=="Part" or cls=="MeshPart" or cls=="UnionOperation"
+                 or cls=="WedgePart" or cls=="CornerWedgePart" or cls=="TrussPart")
+                and not IsPlayerPart(obj)
+                and MatchesMapKeyword(obj.Name) then
+
+                local root = GetRootModel(obj)
+                if not (root and root:IsA("Model") and ShouldSkipRoot(root)) then
+                    targets[#targets+1] = obj
+                end
+            end
+        end
+    end
+
+    print("[MrDon] ✓ Targets collected: " .. #targets)
+
+    -- Pass 2: destroy bulk
+    for i = 1, #targets do
+        pcall(function()
+            if targets[i] and targets[i].Parent then
+                targets[i]:Destroy()
+                destroyed = destroyed + 1
+            end
+        end)
+    end
+
+    print("[MrDon] ✓ Destroyed: " .. destroyed)
+end
+
+-- ============================================================
+-- SECTION 9: WATCHER
 -- ============================================================
 local function StartWatcher()
     Workspace.DescendantAdded:Connect(function(obj)
-        task.delay(0.05, function()  -- 50ms delay thay vì 100ms
-            if obj and obj.Parent and ShouldDestroy(obj) then
-                pcall(function()
-                    obj:Destroy()
-                    destroyed = destroyed + 1
-                end)
+        task.delay(0.1, function()
+            if not obj or not obj.Parent then return end
+            -- Reset cache khi có model mới (NPC mới spawn)
+            local root = GetRootModel(obj)
+            if root and root:IsA("Model") then
+                npcCache[tostring(root)] = nil  -- force re-check
             end
+            SmartDestroy(obj)
         end)
     end)
+    print("[MrDon] ✓ Watcher active")
 end
 
 -- ============================================================
--- SECTION 9: MAIN EXECUTION
+-- SECTION 10: EXECUTE
 -- ============================================================
-local function Main()
+local ok, err = pcall(function()
     local t0 = tick()
 
-    print("[MrDon v3.0] ▶ START")
-
-    -- 1. Lighting nuke (cần trước để không render thêm)
     NukeLighting()
-    print("[MrDon] ✓ Lighting nuked")
-
-    -- 2. Terrain nuke (ocean wave như hình)
     NukeTerrain()
-    print("[MrDon] ✓ Terrain/Ocean wave nuked")
-
-    -- 3. Bulk destroy toàn workspace
-    local count = BulkDestroy(Workspace)
-    print("[MrDon] ✓ Destroyed: " .. count .. " objects")
-
-    -- 4. Render optimization
+    RunScan()
     OptimizeRender()
-    print("[MrDon] ✓ Render optimized")
-
-    -- 5. Start watcher
     StartWatcher()
-    print("[MrDon] ✓ Auto-watcher active")
 
-    local elapsed = math.floor((tick() - t0) * 1000)
-    print("[MrDon] === DONE in " .. elapsed .. "ms | Destroyed: " .. destroyed .. " ===")
+    local ms = math.floor((tick()-t0)*1000)
+    print("[MrDon v4.0] === DONE | " .. destroyed .. " objects | " .. ms .. "ms ===")
 
     Notify(
-        "✅ MrDon v3.0 DONE",
-        "Xóa " .. destroyed .. " object trong " .. elapsed .. "ms. FPS tối ưu!",
+        "✅ MrDon v4.0 DONE",
+        "Xóa " .. destroyed .. " objects. NPC an toàn. FPS boost!",
         6
     )
-end
+end)
 
--- Chạy có bảo vệ
-local ok, err = pcall(Main)
 if not ok then
-    warn("[MrDon] ERR: " .. tostring(err))
-    Notify("⚠️ Script Error", tostring(err), 6)
+    warn("[MrDon] FATAL: " .. tostring(err))
+    Notify("⚠️ Lỗi", tostring(err), 8)
 end
