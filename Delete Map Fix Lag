@@ -1,431 +1,224 @@
--- ============================================================
---  BLOX FRUITS - SMART MAP CLEANER v4.0
---  Executor: Delta X
---  FIX: NPC safe, no interaction bug, no model errors
---  TARGET: Xóa buildings/pillars/deco, GIỮ NPC nguyên vẹn
--- ============================================================
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
 
-local Players    = game:GetService("Players")
-local Workspace  = game:GetService("Workspace")
-local Lighting   = game:GetService("Lighting")
-local StarterGui = game:GetService("StarterGui")
+local LocalPlayer = Players.LocalPlayer
 
-local LP = Players.LocalPlayer
+local function createUI()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "XDM_FixLag_UI"
+    ScreenGui.ResetOnSpawn = false
+    
+    local success = pcall(function()
+        ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end)
+    if not success then
+        ScreenGui.Parent = game:GetService("CoreGui")
+    end
 
--- ============================================================
--- NOTIFY
--- ============================================================
-local function Notify(title, text, dur)
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = title, Text = text, Duration = dur or 4
-        })
+    local FpsLabel = Instance.new("TextLabel")
+    FpsLabel.Name = "FpsLabel"
+    FpsLabel.Parent = ScreenGui
+    FpsLabel.Size = UDim2.new(0, 140, 0, 30)
+    FpsLabel.Position = UDim2.new(0, 15, 0, 15)
+    FpsLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    FpsLabel.BackgroundTransparency = 0.2
+    FpsLabel.TextColor3 = Color3.fromRGB(0, 255, 127)
+    FpsLabel.TextSize = 15
+    FpsLabel.Font = Enum.Font.SourceSansBold
+    FpsLabel.Text = "FPS: --"
+    
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 6)
+    Corner.Parent = FpsLabel
+
+    local NotifLabel = Instance.new("TextLabel")
+    NotifLabel.Name = "NotifLabel"
+    NotifLabel.Parent = ScreenGui
+    NotifLabel.Size = UDim2.new(0, 260, 0, 40)
+    NotifLabel.Position = UDim2.new(0.5, -130, 1, 100)
+    NotifLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    NotifLabel.BackgroundTransparency = 0.15
+    NotifLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    NotifLabel.TextSize = 15
+    NotifLabel.Font = Enum.Font.SourceSansBold
+    NotifLabel.Text = "XDM Hub - Fix Lag: Loading..."
+
+    local NotifCorner = Instance.new("UICorner")
+    NotifCorner.CornerRadius = UDim.new(0, 8)
+    NotifCorner.Parent = NotifLabel
+
+    local NotifStroke = Instance.new("UIStroke")
+    NotifStroke.Color = Color3.fromRGB(0, 170, 255)
+    NotifStroke.Thickness = 1.5
+    NotifStroke.Parent = NotifLabel
+
+    task.spawn(function()
+        local frameCount = 0
+        local lastCheck = tick()
+        RunService.RenderStepped:Connect(function()
+            frameCount = frameCount + 1
+            local currentTime = tick()
+            if currentTime - lastCheck >= 1 then
+                FpsLabel.Text = "FPS: " .. tostring(math.floor(frameCount / (currentTime - lastCheck)))
+                frameCount = 0
+                lastCheck = currentTime
+            end
+        end)
+    end)
+
+    return NotifLabel
+end
+
+local notif = createUI()
+
+local function showNotification(text)
+    notif.Text = text
+    TweenService:Create(notif, TweenInfo.new(0.4), {Position = UDim2.new(0.5, -130, 1, -60)}):Play()
+    task.delay(4, function()
+        TweenService:Create(notif, TweenInfo.new(0.4), {Position = UDim2.new(0.5, -130, 1, 100)}):Play()
     end)
 end
 
-Notify("MrDon v4.0", "Smart Map Cleaner đang khởi động...", 3)
-print("[MrDon v4.0] ▶ SMART MAP CLEANER START")
+showNotification("XDM Hub - Fix Lag: Loading...")
 
--- ============================================================
--- SECTION 1: DETECT NPC - TRÁI TIM CỦA FIX NÀY
--- ============================================================
--- Một object là NPC nếu ancestor Model của nó có Humanoid
--- => KHÔNG BAO GIỜ đụng vào bất kỳ thứ gì bên trong NPC model
-
-local npcCache = {} -- cache để không check lại nhiều lần
-
-local function GetRootModel(obj)
-    local cur = obj
-    while cur.Parent and cur.Parent ~= Workspace do
-        cur = cur.Parent
-    end
-    return cur
-end
-
-local function IsNPC(obj)
-    -- Check từ cache trước
-    local root = GetRootModel(obj)
-    if not root then return false end
-
-    local rootName = tostring(root)
-    if npcCache[rootName] ~= nil then
-        return npcCache[rootName]
+task.spawn(function()
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 9e9
+    Lighting.Brightness = 1
+    
+    for _, child in ipairs(Lighting:GetChildren()) do
+        if child:IsA("PostEffect") or child:IsA("Atmosphere") or child:IsA("Sky") or child:IsA("Clouds") or child:IsA("SunRaysEffect") or child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("ColorCorrectionEffect") then
+            child:Destroy()
+        end
     end
 
-    -- Check có Humanoid không
-    local hasHumanoid = root:FindFirstChildOfClass("Humanoid") ~= nil
-        or root:FindFirstChildWhichIsA("Humanoid", true) ~= nil
+    local NewSky = Instance.new("Sky")
+    NewSky.Name = "XDMSky"
+    NewSky.SkyboxBk = ""
+    NewSky.SkyboxDn = ""
+    NewSky.SkyboxFt = ""
+    NewSky.SkyboxLf = ""
+    NewSky.SkyboxRt = ""
+    NewSky.SkyboxUp = ""
+    NewSky.SunTextureId = ""
+    NewSky.MoonTextureId = ""
+    NewSky.StarCount = 0
+    NewSky.Parent = Lighting
 
-    npcCache[rootName] = hasHumanoid
-    return hasHumanoid
-end
+    pcall(function()
+        local terrain = Workspace:FindFirstChildOfClass("Terrain")
+        if terrain then
+            terrain.WaterWaveSize = 0
+            terrain.WaterWaveSpeed = 0
+            terrain.WaterReflectance = 0
+            terrain.WaterTransparency = 1
+        end
+    end)
 
--- Check player character
-local function IsPlayerPart(obj)
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Character and obj:IsDescendantOf(p.Character) then
+    local function isProtected(obj)
+        if not obj then return false end
+        if LocalPlayer.Character and obj:IsDescendantOf(LocalPlayer.Character) then
             return true
         end
-    end
-    return false
-end
+        
+        local name = obj.Name:lower()
 
--- ============================================================
--- SECTION 2: BLOX FRUITS NPC NAME LIST (KHÔNG ĐƯỢC XÓA)
--- ============================================================
--- Các Model tên này ở root Workspace = NPC => bỏ qua toàn bộ
-local NPC_ROOT_NAMES = {
-    -- Quest givers
-    "Boat Dealer","Blox Fruit Dealer","Bounty Hunter","Sword Dealer",
-    "Upgrade","Enchant","Cyborg Scientist","Advanced Upgrade",
-    "Master of Auras","Arowe","Alchemist","Cook","Pirate Recruit",
-    "Marine Recruit","Greybeard","Swan","Factory Staff",
-    "Galley Captain","King Red Head","Fajita","Don Swan",
-    "Smoke Admiral","Yeti","Diamond","Wysper","Thunder God",
-    "Magma Admiral","Tide Keeper","Darkbeard","Buddha",
-    "Dough King","Order","Cake Prince","Isle Priest",
-    "Longma","Captain Elephant","Tiki Outpost Islander",
-    -- Generic NPC types
-    "NPC","Dealer","Trader","Instructor","Guard","Crew",
-    "Pirate","Marine","Bandit","Mercenary","Fighter",
-    "Master","Teacher","Selector","Shipwright","Prisoner",
-    -- Functional NPC
-    "Mysterious Scientist","Mad Scientist","Sick Man",
-    "Hungry Man","Wealthy Citizen","Rich Man","Baby Yoda",
-    "Military Detective","Horned Man","Zapdos","Chief",
-    "Manager","Bartilo","Izuku","Saber Expert","Raid Boss",
-}
-
-local NPC_NAME_SET = {}
-for _, n in ipairs(NPC_ROOT_NAMES) do
-    NPC_NAME_SET[string.lower(n)] = true
-end
-
-local function IsNPCByName(model)
-    if not model then return false end
-    local lname = string.lower(model.Name)
-    -- Check exact
-    if NPC_NAME_SET[lname] then return true end
-    -- Check partial (NPC, Dealer, etc.)
-    for key, _ in pairs(NPC_NAME_SET) do
-        if lname:find(key, 1, true) then return true end
-    end
-    return false
-end
-
-local function ShouldSkipRoot(root)
-    -- Là player character
-    for _, p in ipairs(Players:GetPlayers()) do
-        if root == p.Character then return true end
-    end
-    -- Tên là NPC
-    if IsNPCByName(root) then return true end
-    -- Có Humanoid bên trong
-    if root:IsA("Model") then
-        if root:FindFirstChildWhichIsA("Humanoid", true) then
+        if name:find("frozen") or name:find("prehistoric") or name:find("kitsune") then
             return true
         end
-    end
-    return false
-end
 
--- ============================================================
--- SECTION 3: DANH SÁCH MAP OBJECTS CẦN XÓA (TINH CHỈNH)
--- ============================================================
--- CHỈ xóa các object rõ ràng là trang trí/map
--- KHÔNG xóa theo keyword mơ hồ để tránh đụng NPC
-
--- Class xóa vô điều kiện (kể cả trong NPC - CHỈ visual effects)
-local ALWAYS_DESTROY_CLASS = {
-    ["ParticleEmitter"] = true,
-    ["Trail"]           = true,
-    ["Beam"]            = true,
-    ["Smoke"]           = true,
-    ["Fire"]            = true,
-    ["Sparkles"]        = true,
-    ["Atmosphere"]      = true,
-    ["BloomEffect"]     = true,
-    ["BlurEffect"]      = true,
-    ["ColorCorrectionEffect"] = true,
-    ["SunRaysEffect"]   = true,
-    ["DepthOfFieldEffect"] = true,
-}
-
--- Class xóa chỉ khi KHÔNG phải NPC/player
-local MAP_DESTROY_CLASS = {
-    ["PointLight"]      = true,
-    ["SpotLight"]       = true,
-    ["SurfaceLight"]    = true,
-    ["Decal"]           = true,
-    ["Texture"]         = true,
-    ["BillboardGui"]    = true,  -- chỉ trên map, NPC đã skip
-    ["SurfaceGui"]      = true,
-    ["Sound"]           = true,
-    ["SelectionBox"]    = true,
-    ["Highlight"]       = true,
-    ["SpecialMesh"]     = true,
-}
-
--- Keyword xóa BasePart MAP (không phải NPC)
--- Tập trung vào buildings/pillars như hình: đen, cao, dạng cột
-local MAP_PART_KEYWORDS = {
-    -- Buildings / Structures thừa (như pillars đen trong hình)
-    "pillar","column","beam_","railing","fence","post_",
-    "wall_","floor_","ceiling","roof","stair","step_",
-    "platform_deco","building_detail","prop_","decoration",
-    "deco_","detail_","trim_","frame_","border_","edge_",
-    "window_","door_frame","arch_","gate_","barricade",
-
-    -- Ocean / water effects
-    "wave","foam","splash","ripple","bubble","tide",
-    "whirlpool","current_","waterdrop","spray",
-
-    -- Thiên nhiên
-    "tree_","bush_","grass_","flower_","leaf_","vine_",
-    "plant_","fern_","shrub_","palm_","bamboo_","reed_",
-    "moss_","ivy_","stump_","rock_deco","pebble_",
-    "boulder_deco","cliff_deco","crystal_deco",
-
-    -- Thời tiết particle
-    "cloud_part","fog_part","mist_part","rain_drop",
-    "snowflake","ash_","dust_",
-
-    -- Đồ vật trang trí map
-    "barrel_","crate_deco","lantern_","lamp_deco","torch_",
-    "banner_","flag_","carpet_","cloth_","curtain_",
-    "statue_","anchor_","rope_","hay_","straw_",
-    "wreck_","ruin_","dock_deco","pier_deco",
-    "ambient_","scenery_","backdrop_","filler_",
-}
-
-local function MatchesMapKeyword(name)
-    local lname = string.lower(name)
-    for _, kw in ipairs(MAP_PART_KEYWORDS) do
-        if lname:find(kw, 1, true) then return true end
-    end
-    return false
-end
-
--- ============================================================
--- SECTION 4: SMART DESTROY LOGIC
--- ============================================================
-local destroyed = 0
-
-local function SmartDestroy(obj)
-    if not obj or not obj.Parent then return end
-
-    local cls = obj.ClassName
-
-    -- 1. Visual effects: xóa kể cả trong NPC (chỉ particle/trail/beam)
-    --    NHƯNG không xóa nếu là player
-    if ALWAYS_DESTROY_CLASS[cls] then
-        if not IsPlayerPart(obj) then
-            pcall(function()
-                obj.Enabled = false  -- tắt trước
-                obj:Destroy()
-                destroyed = destroyed + 1
-            end)
-        end
-        return
-    end
-
-    -- 2. Mọi thứ còn lại: KHÔNG đụng NPC hoặc player
-    if IsPlayerPart(obj) then return end
-
-    -- Tìm root model
-    local root = GetRootModel(obj)
-    if root and root:IsA("Model") and ShouldSkipRoot(root) then
-        return  -- Bên trong NPC => bỏ qua
-    end
-
-    -- 3. Map-only class
-    if MAP_DESTROY_CLASS[cls] then
-        pcall(function()
-            obj:Destroy()
-            destroyed = destroyed + 1
-        end)
-        return
-    end
-
-    -- 4. BasePart/MeshPart theo keyword map
-    if cls == "Part" or cls == "MeshPart" or cls == "UnionOperation"
-    or cls == "WedgePart" or cls == "CornerWedgePart" or cls == "TrussPart" then
-        if MatchesMapKeyword(obj.Name) then
-            pcall(function()
-                obj:Destroy()
-                destroyed = destroyed + 1
-            end)
-        end
-    end
-end
-
--- ============================================================
--- SECTION 5: TERRAIN FIX (OCEAN NHƯ HÌNH)
--- ============================================================
-local function NukeTerrain()
-    pcall(function()
-        local t = Workspace:FindFirstChildOfClass("Terrain")
-        if not t then return end
-        t.WaterWaveSize     = 0
-        t.WaterWaveSpeed    = 0
-        t.WaterReflectance  = 0
-        t.WaterTransparency = 1
-        t.WaterColor        = Color3.fromRGB(30, 80, 140)
-        t.Decoration        = false
-        print("[MrDon] ✓ Terrain water nuked")
-    end)
-end
-
--- ============================================================
--- SECTION 6: LIGHTING CLEAN
--- ============================================================
-local function NukeLighting()
-    pcall(function()
-        Lighting.GlobalShadows  = false
-        Lighting.ShadowSoftness = 0
-        Lighting.Brightness     = 1
-        Lighting.FogEnd         = 999999
-        Lighting.FogStart       = 999999
-        Lighting.Ambient        = Color3.fromRGB(128,128,128)
-        Lighting.OutdoorAmbient = Color3.fromRGB(128,128,128)
-
-        for _, fx in ipairs(Lighting:GetChildren()) do
-            local c = fx.ClassName
-            if c == "Atmosphere" or c == "BloomEffect" or c == "BlurEffect"
-            or c == "ColorCorrectionEffect" or c == "SunRaysEffect"
-            or c == "DepthOfFieldEffect" then
-                pcall(function() fx:Destroy() end)
+        local current = obj.Parent
+        while current and current ~= Workspace do
+            local cName = current.Name:lower()
+            if cName == "enemies" or cName == "npcs" or cName == "boats" or cName == "characters" then
+                return true
             end
-        end
-        print("[MrDon] ✓ Lighting cleaned")
-    end)
-end
-
--- ============================================================
--- SECTION 7: FPS + PLAYER EFFECT REDUCE
--- ============================================================
-local function OptimizeRender()
-    pcall(function()
-        if setfpscap then setfpscap(60)
-        elseif syn and syn.set_fps_cap then syn.set_fps_cap(60) end
-    end)
-
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LP and p.Character then
-            for _, d in ipairs(p.Character:GetDescendants()) do
-                if d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Beam") then
-                    pcall(function() d.Enabled = false end)
-                end
+            if cName:find("frozen") or cName:find("prehistoric") or cName:find("kitsune") or cName:find("boat") or cName:find("ship") or cName:find("leviathan") or cName:find("seaevent") then
+                return true
             end
+            current = current.Parent
         end
-    end
-    print("[MrDon] ✓ Render optimized")
-end
 
--- ============================================================
--- SECTION 8: MAIN SCAN - 2-PASS BULK
--- ============================================================
-local function RunScan()
-    -- Build NPC cache trước
-    for _, root in ipairs(Workspace:GetChildren()) do
-        if root:IsA("Model") then
-            local has = root:FindFirstChildWhichIsA("Humanoid", true) ~= nil
-            npcCache[tostring(root)] = has
+        if Workspace:FindFirstChild("Enemies") and obj:IsDescendantOf(Workspace.Enemies) then return true end
+        if Workspace:FindFirstChild("NPCs") and obj:IsDescendantOf(Workspace.NPCs) then return true end
+        if Workspace:FindFirstChild("Boats") and obj:IsDescendantOf(Workspace.Boats) then return true end
+
+        if name:find("boat") or name:find("ship") or name:find("leviathan") or name:find("seaevent") or name:find("npc") or name:find("enemy") then
+            return true
         end
+
+        if obj:FindFirstChildOfClass("Humanoid") then
+            return true
+        end
+
+        return false
     end
-    print("[MrDon] ✓ NPC cache built: " .. #Workspace:GetChildren() .. " roots scanned")
 
-    -- GetDescendants 1 lần duy nhất
-    local all = Workspace:GetDescendants()
-    local targets = {}
+    local function cleanObject(v)
+        if isProtected(v) then return end
 
-    -- Pass 1: collect
-    for i = 1, #all do
-        local obj = all[i]
-        if obj and obj.Parent then
-            local cls = obj.ClassName
+        if v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Highlight") or v:IsA("SelectionBox") then
+            v:Destroy()
+            return
+        end
 
-            -- Quick accept: particle effects (xóa mọi chỗ trừ player)
-            if ALWAYS_DESTROY_CLASS[cls] and not IsPlayerPart(obj) then
-                targets[#targets+1] = obj
+        if v:IsA("Light") then
+            v:Destroy()
+            return
+        end
 
-            -- Map class: cần check NPC
-            elseif MAP_DESTROY_CLASS[cls] and not IsPlayerPart(obj) then
-                local root = GetRootModel(obj)
-                if not (root and root:IsA("Model") and ShouldSkipRoot(root)) then
-                    targets[#targets+1] = obj
-                end
+        if v:IsA("Decal") or v:IsA("Texture") then
+            v:Destroy()
+            return
+        end
 
-            -- BasePart keyword: cần check NPC
-            elseif (cls=="Part" or cls=="MeshPart" or cls=="UnionOperation"
-                 or cls=="WedgePart" or cls=="CornerWedgePart" or cls=="TrussPart")
-                and not IsPlayerPart(obj)
-                and MatchesMapKeyword(obj.Name) then
-
-                local root = GetRootModel(obj)
-                if not (root and root:IsA("Model") and ShouldSkipRoot(root)) then
-                    targets[#targets+1] = obj
-                end
+        if v:IsA("MeshPart") or v:IsA("BasePart") then
+            if v.Name:lower():find("water") or v.Name:lower():find("ocean") or v.Name:lower():find("sea") then
+                v.Transparency = 1
+            else
+                v.Material = Enum.Material.SmoothPlastic
+                v.Reflectance = 0
             end
         end
     end
 
-    print("[MrDon] ✓ Targets collected: " .. #targets)
+    local allInstances = Workspace:GetDescendants()
+    local count = 0
+    for _, v in ipairs(allInstances) do
+        pcall(cleanObject, v)
+        count = count + 1
+        if count % 120 == 0 then
+            task.wait()
+        end
+    end
 
-    -- Pass 2: destroy bulk
-    for i = 1, #targets do
-        pcall(function()
-            if targets[i] and targets[i].Parent then
-                targets[i]:Destroy()
-                destroyed = destroyed + 1
+    Workspace.DescendantAdded:Connect(function(v)
+        task.spawn(function()
+            if isProtected(v) then return end
+            if v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Highlight") then
+                v:Destroy()
+            elseif v:IsA("ColorCorrectionEffect") or v:IsA("BlurEffect") or v:IsA("PostEffect") then
+                v:Destroy()
             end
         end)
-    end
-
-    print("[MrDon] ✓ Destroyed: " .. destroyed)
-end
-
--- ============================================================
--- SECTION 9: WATCHER
--- ============================================================
-local function StartWatcher()
-    Workspace.DescendantAdded:Connect(function(obj)
-        task.delay(0.1, function()
-            if not obj or not obj.Parent then return end
-            -- Reset cache khi có model mới (NPC mới spawn)
-            local root = GetRootModel(obj)
-            if root and root:IsA("Model") then
-                npcCache[tostring(root)] = nil  -- force re-check
-            end
-            SmartDestroy(obj)
-        end)
     end)
-    print("[MrDon] ✓ Watcher active")
-end
 
--- ============================================================
--- SECTION 10: EXECUTE
--- ============================================================
-local ok, err = pcall(function()
-    local t0 = tick()
+    pcall(function()
+        local camera = Workspace.CurrentCamera
+        camera.ChildAdded:Connect(function(child)
+            if child:IsA("PostEffect") or child:IsA("DepthOfFieldEffect") or child:IsA("ColorCorrectionEffect") or child:IsA("BlurEffect") then
+                child:Destroy()
+            end
+        end)
+        for _, child in ipairs(camera:GetChildren()) do
+            if child:IsA("PostEffect") or child:IsA("DepthOfFieldEffect") or child:IsA("ColorCorrectionEffect") or child:IsA("BlurEffect") then
+                child:Destroy()
+            end
+        end
+    end)
 
-    NukeLighting()
-    NukeTerrain()
-    RunScan()
-    OptimizeRender()
-    StartWatcher()
-
-    local ms = math.floor((tick()-t0)*1000)
-    print("[MrDon v4.0] === DONE | " .. destroyed .. " objects | " .. ms .. "ms ===")
-
-    Notify(
-        "✅ MrDon v4.0 DONE",
-        "Xóa " .. destroyed .. " objects. NPC an toàn. FPS boost!",
-        6
-    )
+    showNotification("XDM Hub - Fix Lag: Load Xong!")
 end)
-
-if not ok then
-    warn("[MrDon] FATAL: " .. tostring(err))
-    Notify("⚠️ Lỗi", tostring(err), 8)
-end
