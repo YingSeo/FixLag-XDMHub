@@ -118,12 +118,26 @@ task.spawn(function()
         end
     end)
 
+    local baseplate = Workspace:FindFirstChild("XDM_Baseplate")
+    if not baseplate then
+        baseplate = Instance.new("Part")
+        baseplate.Name = "XDM_Baseplate"
+        baseplate.Size = Vector3.new(100000, 10, 100000)
+        baseplate.Position = Vector3.new(0, -5, 0)
+        baseplate.Anchored = true
+        baseplate.CanCollide = true
+        baseplate.Material = Enum.Material.Studs
+        baseplate.Color = Color3.fromRGB(90, 90, 90)
+        baseplate.Parent = Workspace
+    end
+
     local function isProtected(obj)
         if not obj then return false end
+        if obj == baseplate then return true end
         if LocalPlayer.Character and obj:IsDescendantOf(LocalPlayer.Character) then
             return true
         end
-        
+
         local name = obj.Name:lower()
 
         if name:find("frozen") or name:find("prehistoric") or name:find("kitsune") then
@@ -133,7 +147,7 @@ task.spawn(function()
         local current = obj.Parent
         while current and current ~= Workspace do
             local cName = current.Name:lower()
-            if cName == "enemies" or cName == "npcs" or cName == "boats" or cName == "characters" then
+            if cName == "enemies" or cName == "npcs" or cName == "boats" or cName == "characters" or cName == "players" then
                 return true
             end
             if cName:find("frozen") or cName:find("prehistoric") or cName:find("kitsune") or cName:find("boat") or cName:find("ship") or cName:find("leviathan") or cName:find("seaevent") then
@@ -157,72 +171,77 @@ task.spawn(function()
         return false
     end
 
-    local function clearVFX(v)
-        if isProtected(v) then return false end
+    local function killVFX(v)
+        if isProtected(v) then return end
 
         if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Highlight") or v:IsA("SelectionBox") or v:IsA("Explosion") then
             pcall(function()
                 v.Enabled = false
                 v:Destroy()
             end)
-            return true
-        end
-
-        if v:IsA("Light") or v:IsA("PostEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") then
+        elseif v:IsA("Light") or v:IsA("PostEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") then
             pcall(function() v:Destroy() end)
-            return true
-        end
-
-        if v:IsA("Decal") or v:IsA("Texture") or v:IsA("SurfaceAppearance") then
+        elseif v:IsA("Decal") or v:IsA("Texture") or v:IsA("SurfaceAppearance") then
             pcall(function() v:Destroy() end)
-            return true
         end
-
-        if v:IsA("MeshPart") or v:IsA("BasePart") then
-            local name = v.Name:lower()
-            if name:find("effect") or name:find("vfx") or name:find("skill") or name:find("aura") or name:find("slash") or name:find("blast") or name:find("hit") or name:find("particle") or name:find("ring") or name:find("flash") or name:find("beam") or name:find("magic") or name:find("circle") then
-                pcall(function()
-                    v.Transparency = 1
-                    v:Destroy()
-                end)
-                return true
-            end
-        end
-
-        return false
     end
 
-    local function cleanMapObject(v)
+    local function processMapItem(v)
         if isProtected(v) then return end
-        if clearVFX(v) then return end
+        killVFX(v)
 
-        if v:IsA("MeshPart") or v:IsA("BasePart") then
-            local name = v.Name:lower()
-            if name:find("water") or name:find("ocean") or name:find("sea") then
-                v.Transparency = 1
-            elseif name:find("ground") or name:find("floor") or name:find("base") or name:find("grass") or name:find("sand") or name:find("land") or name:find("terrain") then
-                v.Material = Enum.Material.SmoothPlastic
-                v.Color = Color3.fromRGB(80, 80, 80)
-            else
-                v.Transparency = 1
+        if v:IsA("Model") or v:IsA("Folder") then
+            local hasProtected = false
+            for _, child in ipairs(v:GetChildren()) do
+                if isProtected(child) then
+                    hasProtected = true
+                    break
+                end
+            end
+            if not hasProtected then
+                pcall(function() v:Destroy() end)
+            end
+        elseif v:IsA("BasePart") or v:IsA("MeshPart") then
+            pcall(function() v:Destroy() end)
+        end
+    end
+
+    local mapFolder = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("Islands") or Workspace:FindFirstChild("Locations") or Workspace:FindFirstChild("World")
+    if mapFolder then
+        local children = mapFolder:GetChildren()
+        local count = 0
+        for _, v in ipairs(children) do
+            pcall(processMapItem, v)
+            count = count + 1
+            if count % 40 == 0 then
+                task.wait()
             end
         end
     end
 
-    local allInstances = Workspace:GetDescendants()
-    local count = 0
-    for _, v in ipairs(allInstances) do
-        pcall(cleanMapObject, v)
-        count = count + 1
-        if count % 120 == 0 then
-            task.wait()
+    local wsChildren = Workspace:GetChildren()
+    local wsCount = 0
+    for _, v in ipairs(wsChildren) do
+        if v ~= mapFolder and not isProtected(v) and v.Name ~= "Terrain" and v.Name ~= "Camera" then
+            pcall(processMapItem, v)
+            wsCount = wsCount + 1
+            if wsCount % 40 == 0 then
+                task.wait()
+            end
         end
     end
 
     Workspace.DescendantAdded:Connect(function(v)
         task.spawn(function()
             if isProtected(v) then return end
-            clearVFX(v)
+            killVFX(v)
+            if v:IsA("BasePart") or v:IsA("MeshPart") then
+                local parent = v.Parent
+                local pName = parent and parent.Name:lower() or ""
+                if pName:find("effect") or pName:find("vfx") or pName:find("skill") or pName:find("attack") or pName:find("combat") then
+                    pcall(function() v:Destroy() end)
+                end
+            end
         end)
     end)
 
@@ -230,12 +249,12 @@ task.spawn(function()
     if camera then
         camera.ChildAdded:Connect(function(child)
             task.spawn(function()
-                clearVFX(child)
+                killVFX(child)
             end)
         end)
         for _, child in ipairs(camera:GetChildren()) do
             task.spawn(function()
-                clearVFX(child)
+                killVFX(child)
             end)
         end
     end
