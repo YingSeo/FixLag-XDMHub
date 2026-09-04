@@ -1,33 +1,38 @@
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 
--- 1. Tạo Sàn Xám Phẳng ngay dưới chân bạn để đứng cố định
-local function createPlatform()
-    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    local spawnY = root and (root.Position.Y - 3.5) or 0
-    local spawnPos = root and Vector3.new(root.Position.X, spawnY, root.Position.Z) or Vector3.new(0, 0, 0)
-
-    local platform = Workspace:FindFirstChild("XDM_FarmPlatform")
-    if not platform then
-        platform = Instance.new("Part")
-        platform.Name = "XDM_FarmPlatform"
-        platform.Size = Vector3.new(100000, 10, 100000)
-        platform.Position = spawnPos
-        platform.Anchored = true
-        platform.CanCollide = true
-        platform.Material = Enum.Material.SmoothPlastic
-        platform.Color = Color3.fromRGB(80, 80, 80)
-        platform.Parent = Workspace
-    end
-    return platform
+-- 1. Tạo Sàn An Toàn Trên Không (Y = 100)
+local platform = Workspace:FindFirstChild("XDM_SafePlatform")
+if not platform then
+    platform = Instance.new("Part")
+    platform.Name = "XDM_SafePlatform"
+    platform.Size = Vector3.new(20000, 20, 20000)
+    platform.Position = Vector3.new(0, 100, 0) -- Đặt cao hẳn trên mặt nước
+    platform.Anchored = true
+    platform.CanCollide = true
+    platform.Material = Enum.Material.SmoothPlastic
+    platform.Color = Color3.fromRGB(80, 80, 80)
+    platform.Parent = Workspace
 end
 
-local platform = createPlatform()
+-- 2. Tự động Giải cứu Nhân vật khi bị rơi xuống biển
+local function rescuePlayer()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local hrp = char.HumanoidRootPart
+        -- Nếu bị rớt xuống dưới biển (Y < 20), kéo ngay lên sàn an toàn
+        if hrp.Position.Y < 20 then
+            hrp.CFrame = CFrame.new(0, 115, 0)
+            hrp.AssemblyLinearVelocity = Vector3.zero
+        end
+    end
+end
 
--- 2. Tắt hiệu ứng Ánh sáng & Bầu trời (Xóa màu màn hình, tăng FPS)
+-- 3. Tắt Màu Màn Hình & Ánh Sáng (Tăng FPS)
 Lighting.GlobalShadows = false
 Lighting.FogEnd = 9e9
 Lighting.Brightness = 1
@@ -40,36 +45,8 @@ for _, v in ipairs(Lighting:GetChildren()) do
     end
 end
 
--- 3. Kiểm tra bảo vệ Nhân vật / NPC / Quái / Thuyền / Sàn
-local function isProtected(obj)
-    if not obj then return true end
-    if obj == platform or obj.Name == "XDM_FarmPlatform" then return true end
-
-    -- Bảo vệ Người chơi
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Character and (obj == p.Character or obj:IsDescendantOf(p.Character)) then
-            return true
-        end
-    end
-
-    -- Bảo vệ NPC, Quái, Quest, Thuyền
-    local current = obj
-    while current and current ~= Workspace do
-        local name = current.Name:lower()
-        if name:find("enemy") or name:find("enemies") or name:find("npc") or name:find("quest") or name:find("boat") or name:find("player") then
-            return true
-        end
-        if current:FindFirstChildOfClass("Humanoid") then
-            return true
-        end
-        current = current.Parent
-    end
-
-    return false
-end
-
--- 4. Tắt VFX Chiêu, Hạt sáng, Đèn, Decal
-local function cleanVFX(v)
+-- 4. Xóa Hiệu ứng Chiêu (VFX) / Hạt sáng / Khói
+local function disableVFX(v)
     if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Highlight") or v:IsA("SelectionBox") or v:IsA("Explosion") then
         pcall(function()
             v.Enabled = false
@@ -82,39 +59,47 @@ local function cleanVFX(v)
     end
 end
 
--- 5. Làm tàng hình Map (Không xóa để Script Farm vẫn đọc được dữ liệu)
-local function hideMap(obj)
-    cleanVFX(obj)
-
-    if isProtected(obj) then return end
-
-    if obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
+-- 5. Tàng hình Map (Không xóa Folder để Script Farm hoạt động)
+local function hideMapPart(v)
+    disableVFX(v)
+    
+    if v == platform or v.Name == "XDM_SafePlatform" then return end
+    
+    -- Bảo vệ người chơi và NPC/Quái/Thuyền
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character and v:IsDescendantOf(p.Character) then
+            return
+        end
+    end
+    
+    local name = v.Name:lower()
+    if name:find("enemy") or name:find("npc") or name:find("quest") or name:find("boat") or name:find("player") then
+        return
+    end
+    
+    if v:IsA("BasePart") or v:IsA("MeshPart") or v:IsA("UnionOperation") then
         pcall(function()
-            obj.Transparency = 1
-            obj.CastShadow = false
+            v.Transparency = 1
+            v.CastShadow = false
         end)
     end
 end
 
--- Tiến hành tàng hình Map
+-- Quét ẩn Map
 task.spawn(function()
     for _, v in ipairs(Workspace:GetDescendants()) do
-        hideMap(v)
+        hideMapPart(v)
     end
 end)
 
--- Tắt nước biển
-pcall(function()
-    local terrain = Workspace.Terrain
-    terrain.WaterTransparency = 1
-    terrain.WaterWaveSize = 0
-    terrain.WaterWaveSpeed = 0
-    terrain.WaterReflectance = 0
-end)
-
--- Tự động dọn dẹp VFX khi tung chiêu mới mà không làm treo game
+-- Tự động dọn dẹp VFX khi tung chiêu mới
 Workspace.DescendantAdded:Connect(function(v)
     task.spawn(function()
-        cleanVFX(v)
+        disableVFX(v)
     end)
+end)
+
+-- Vòng lặp liên tục kiểm tra chống rơi biển
+RunService.Heartbeat:Connect(function()
+    rescuePlayer()
 end)
