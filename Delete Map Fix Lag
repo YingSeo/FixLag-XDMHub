@@ -1,103 +1,68 @@
 -- ============================================================
---  BLOX FRUITS - LAG FIX + MAP CLEANER SCRIPT
---  Executor: Delta X | Game: Blox Fruits
---  Author: MrDon | Version: 2.0
+--  BLOX FRUITS - FULL MAP DESTROYER v3.0
+--  Executor: Delta X | Ultra Fast Bulk Clean
+--  Target: Ocean/Sea Zone như hình + toàn bộ map
 -- ============================================================
 
-local Players     = game:GetService("Players")
-local Workspace   = game:GetService("Workspace")
-local Lighting    = game:GetService("Lighting")
-local RunService  = game:GetService("RunService")
-local StarterGui  = game:GetService("StarterGui")
+local Players    = game:GetService("Players")
+local Workspace  = game:GetService("Workspace")
+local Lighting   = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
+local RunService = game:GetService("RunService")
 
-local LocalPlayer = Players.LocalPlayer
+local LP = Players.LocalPlayer
 
 -- ============================================================
--- SECTION 1: THÔNG BÁO KHỞI ĐỘNG
+-- NOTIFY
 -- ============================================================
-local function Notify(title, text, duration)
+local function Notify(title, text, dur)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
-            Title    = title,
-            Text     = text,
-            Duration = duration or 4,
+            Title = title, Text = text, Duration = dur or 4
         })
     end)
 end
 
-Notify("MrDon FPS Boost", "Đang tải script tối ưu...", 3)
+Notify("MrDon v3.0", "Đang khởi động Full Map Destroyer...", 3)
 
 -- ============================================================
--- SECTION 2: CÀI ĐẶT - CHỈNH Ở ĐÂY
+-- SECTION 1: WHITELIST - TUYỆT ĐỐI KHÔNG XÓA
 -- ============================================================
-local CONFIG = {
-    -- Xóa các vật thể trang trí trong map
-    RemoveDecorations     = true,
-
-    -- Xóa cây cối, đá, thực vật
-    RemoveNature          = true,
-
-    -- Xóa hiệu ứng biển / nước (giảm lag nặng)
-    RemoveWaterEffects    = true,
-
-    -- Xóa mây và bầu trời particle
-    RemoveClouds          = true,
-
-    -- Tắt shadow (đổ bóng)
-    DisableShadows        = true,
-
-    -- Giảm quality Lighting
-    LowGraphicsLighting   = true,
-
-    -- Xóa NPC không cần thiết (respawn NPC vẫn giữ)
-    RemoveIdleNPCs        = false, -- Để false tránh bug quest
-
-    -- Tắt texture địa hình (mạnh nhất, map trở nên trơn)
-    DisableTerrainTexture = true,
-
-    -- FPS giới hạn (60 là chuẩn mobile)
-    FPSLimit              = 60,
+local KEEP_CLASS = {
+    ["Terrain"]         = true,
+    ["Camera"]          = true,
+    ["Humanoid"]        = true,
+    ["HumanoidRootPart"]= true,
+    ["AnimationController"] = true,
+    ["Script"]          = true,
+    ["LocalScript"]     = true,
+    ["RemoteEvent"]     = true,
+    ["RemoteFunction"]  = true,
+    ["BindableEvent"]   = true,
+    ["BindableFunction"]= true,
+    ["ModuleScript"]    = true,
+    ["Configuration"]   = true,
+    ["StringValue"]     = true,
+    ["IntValue"]        = true,
+    ["BoolValue"]       = true,
+    ["NumberValue"]     = true,
+    ["ObjectValue"]     = true,
+    ["Folder"]          = true,
+    ["Model"]           = true,   -- giữ Model container, xóa nội dung bên trong
 }
 
--- ============================================================
--- SECTION 3: DANH SÁCH TÊN VẬT THỂ CẦN XÓA
--- ============================================================
-local REMOVE_KEYWORDS = {
-    -- Trang trí biển / ocean area
-    "Wave", "Foam", "Splash", "WaterParticle", "OceanFoam",
-    "SeaParticle", "Ripple", "WaterEffect", "Bubble",
-
-    -- Cây cối / thực vật
-    "Tree", "Bush", "Grass", "Flower", "Leaf", "Vine",
-    "Plant", "Fern", "Shrub", "Palm",
-
-    -- Đá và địa hình thừa
-    "Rock", "Pebble", "Boulder", "Debris", "Rubble",
-
-    -- Particle hiệu ứng thời tiết
-    "Cloud", "Fog", "Mist", "Rain", "Snow", "Smoke",
-    "Ash", "Dust", "Steam",
-
-    -- Ánh sáng thừa / glow
-    "SpotLight", "SurfaceLight", "PointLight",
-    "Glow", "LightBeam", "AmbientLight",
-
-    -- Vật thể vô hình gây lag
-    "Shadow", "Decal_", "TexturePart",
+local KEEP_NAME_EXACT = {
+    ["SpawnLocation"]  = true,
+    ["Baseplate"]      = true,
+    ["Sky"]            = true,
+    ["Sun"]            = true,
 }
 
--- Tên chính xác cần giữ lại (tránh xóa nhầm)
-local WHITELIST = {
-    "SpawnLocation", "Baseplate", "Sky",
-    LocalPlayer.Name,
-}
-
--- ============================================================
--- SECTION 4: HÀM KIỂM TRA WHITELIST
--- ============================================================
-local function IsWhitelisted(name)
-    for _, w in ipairs(WHITELIST) do
-        if string.lower(name):find(string.lower(w)) then
+-- Parts thuộc character player => không đụng
+local function IsPlayerCharacterPart(obj)
+    for _, p in ipairs(Players:GetPlayers()) do
+        local char = p.Character
+        if char and (obj == char or obj:IsDescendantOf(char)) then
             return true
         end
     end
@@ -105,127 +70,240 @@ local function IsWhitelisted(name)
 end
 
 -- ============================================================
--- SECTION 5: HÀM XÓA VẬT THỂ THEO TỪ KHÓA
+-- SECTION 2: DANH SÁCH CLASS CẦN XÓA (FULL)
 -- ============================================================
-local removed = 0
+local DESTROY_CLASS = {
+    -- Visual / Render nặng nhất
+    ["ParticleEmitter"]     = true,
+    ["Trail"]               = true,
+    ["Beam"]                = true,
+    ["Smoke"]               = true,
+    ["Fire"]                = true,
+    ["Sparkles"]            = true,
 
-local function CleanObject(obj)
-    if not obj or not obj.Parent then return end
-    if IsWhitelisted(obj.Name) then return end
+    -- Lighting objects
+    ["PointLight"]          = true,
+    ["SpotLight"]           = true,
+    ["SurfaceLight"]        = true,
 
-    local lname = string.lower(obj.Name)
-    for _, kw in ipairs(REMOVE_KEYWORDS) do
-        if lname:find(string.lower(kw)) then
-            pcall(function()
-                -- Chỉ xóa nếu là BasePart, Model, ParticleEmitter, Decal, Texture
-                local cls = obj.ClassName
-                if cls == "Part" or cls == "MeshPart" or cls == "UnionOperation"
-                or cls == "Model" or cls == "ParticleEmitter" or cls == "Decal"
-                or cls == "Texture" or cls == "SpecialMesh" or cls == "SelectionBox"
-                or cls == "BillboardGui" or cls == "SurfaceGui"
-                or cls == "PointLight" or cls == "SpotLight" or cls == "SurfaceLight" then
-                    obj:Destroy()
-                    removed = removed + 1
-                end
-            end)
-            return
+    -- Texture / Decal
+    ["Decal"]               = true,
+    ["Texture"]             = true,
+
+    -- GUI trên map (billboard)
+    ["BillboardGui"]        = true,
+    ["SurfaceGui"]          = true,
+
+    -- Sound
+    ["Sound"]               = true,
+
+    -- Mesh thừa
+    ["SpecialMesh"]         = true,
+    ["SelectionBox"]        = true,
+    ["SelectionSphere"]     = true,
+
+    -- Constraint thừa
+    ["BodyVelocity"]        = true,
+    ["BodyGyro"]            = true,
+    ["BodyPosition"]        = true,
+    ["BodyAngularVelocity"] = true,
+    ["VectorForce"]         = true,
+    ["Torque"]              = true,
+    ["LinearVelocity"]      = true,
+    ["AngularVelocity"]     = true,
+
+    -- Highlight / UI 3D
+    ["Highlight"]           = true,
+    ["BoxHandleAdornment"]  = true,
+    ["SphereHandleAdornment"]= true,
+    ["CylinderHandleAdornment"]= true,
+}
+
+-- ============================================================
+-- SECTION 3: TỪ KHÓA TÊN OBJECT CẦN XÓA (FULL OCEAN/MAP)
+-- ============================================================
+-- BasePart / MeshPart / UnionOperation khớp tên này => destroy
+local DESTROY_NAME_KEYWORDS = {
+    -- OCEAN / SEA (ưu tiên hàng đầu - như hình boss man)
+    "wave","foam","splash","ocean","sea","water","ripple",
+    "bubble","current","tide","whirlpool","puddle","lake",
+    "river","stream","wetland","aqua","marine","naval",
+
+    -- CÂY / THỰC VẬT
+    "tree","bush","grass","flower","leaf","vine","plant",
+    "fern","shrub","palm","bamboo","mushroom","reed","algae",
+    "moss","ivy","twig","branch","bark","trunk","stump","root",
+
+    -- ĐÁ / ĐỊA HÌNH THỪA
+    "rock","pebble","boulder","cliff","stone","crystal",
+    "debris","rubble","gravel","sand","dirt","mud","soil",
+
+    -- KHÍ TƯỢNG / TRỜI
+    "cloud","fog","mist","rain","snow","smoke","ash","dust",
+    "storm","lightning","thunder","haze","weather","wind",
+    "tornado","hurricane","blizzard","drizzle","sleet",
+
+    -- ÁNH SÁNG / GLOW THỪA
+    "glow","beam","flare","aura","shine","shimmer","sparkle",
+    "glimmer","radiance","halo","bloom","lens","fleck",
+
+    -- TRANG TRÍ MAP
+    "fence","barrel","crate","chest","lantern","lamp","torch",
+    "sign","banner","flag","tent","carpet","cloth","curtain",
+    "bush","hedge","topiary","statue","pillar","column",
+    "arch","gate","wall","debris","ruin","rubble","wreck",
+    "dock","pier","boat","ship","anchor","rope","net",
+    "cage","chain","wood","plank","log","twig","hay","straw",
+
+    -- PLATFORM / ISLAND THỪA (giữ chỗ đứng nhưng xóa deco)
+    "deco","decoration","detail","prop","asset","filler",
+    "ambient","environment","nature","scenic","scenery",
+    "background","backdrop","scenicprop",
+
+    -- HIỆU ỨNG SKILL / COMBAT THỪA
+    "hitbox","trail","afterimage","echo","shadow_clone",
+    "impact","explosion","shockwave","slash","strike",
+}
+
+-- ============================================================
+-- SECTION 4: FAST BULK DESTROY ENGINE
+-- ============================================================
+local destroyed = 0
+local skipped   = 0
+
+local function ShouldDestroy(obj)
+    -- Không phá character player
+    if IsPlayerCharacterPart(obj) then
+        skipped = skipped + 1
+        return false
+    end
+
+    -- Giữ tên exact
+    if KEEP_NAME_EXACT[obj.Name] then
+        skipped = skipped + 1
+        return false
+    end
+
+    -- Giữ Camera và Terrain tuyệt đối
+    local cls = obj.ClassName
+    if cls == "Camera" or cls == "Terrain" then
+        return false
+    end
+
+    -- Xóa theo class (particle, light, sound, beam, v.v.)
+    if DESTROY_CLASS[cls] then
+        return true
+    end
+
+    -- Xóa BasePart/MeshPart/Union khớp keyword
+    if cls == "Part" or cls == "MeshPart" or cls == "UnionOperation"
+    or cls == "WedgePart" or cls == "CornerWedgePart" or cls == "TrussPart" then
+        local lname = string.lower(obj.Name)
+        for _, kw in ipairs(DESTROY_NAME_KEYWORDS) do
+            if lname:find(kw, 1, true) then
+                return true
+            end
         end
     end
+
+    return false
+end
+
+-- CORE: GetDescendants một lần, lọc, destroy batch
+local function BulkDestroy(parent)
+    local all = parent:GetDescendants()
+    local targets = {}
+
+    -- Pass 1: thu thập target (không destroy ngay, tránh iterator lỗi)
+    for i = 1, #all do
+        local obj = all[i]
+        if obj and obj.Parent ~= nil then
+            if ShouldDestroy(obj) then
+                targets[#targets + 1] = obj
+            end
+        end
+    end
+
+    -- Pass 2: destroy toàn bộ
+    for i = 1, #targets do
+        pcall(function()
+            if targets[i] and targets[i].Parent then
+                targets[i]:Destroy()
+                destroyed = destroyed + 1
+            end
+        end)
+    end
+
+    return #targets
 end
 
 -- ============================================================
--- SECTION 6: QUÉT TOÀN BỘ WORKSPACE
+-- SECTION 5: XÓA TERRAIN EFFECTS (OCEAN WAVE NHƯ HÌNH)
 -- ============================================================
-local function ScanWorkspace()
-    local function recurse(parent)
-        for _, child in ipairs(parent:GetChildren()) do
-            -- Không đụng vào character của player
-            local ok = true
-            for _, p in ipairs(Players:GetPlayers()) do
-                if child == p.Character then
-                    ok = false
-                    break
-                end
-            end
-            if ok then
-                CleanObject(child)
-                -- Đệ quy vào children nếu còn tồn tại
-                if child and child.Parent then
-                    recurse(child)
-                end
-            end
-        end
-    end
-    recurse(Workspace)
-end
-
--- ============================================================
--- SECTION 7: TỐI ƯU LIGHTING
--- ============================================================
-local function OptimizeLighting()
-    if CONFIG.DisableShadows then
-        Lighting.GlobalShadows     = false
-        Lighting.ShadowSoftness    = 0
-    end
-
-    if CONFIG.LowGraphicsLighting then
-        Lighting.Brightness        = 1
-        Lighting.Ambient           = Color3.fromRGB(120, 120, 120)
-        Lighting.OutdoorAmbient    = Color3.fromRGB(120, 120, 120)
-        Lighting.FogEnd            = 100000  -- tắt sương mù
-        Lighting.FogStart          = 100000
-
-        -- Xóa các hiệu ứng Atmosphere và Bloom
-        for _, effect in ipairs(Lighting:GetChildren()) do
-            local cls = effect.ClassName
-            if cls == "Atmosphere" or cls == "BloomEffect"
-            or cls == "BlurEffect" or cls == "ColorCorrectionEffect"
-            or cls == "SunRaysEffect" or cls == "DepthOfFieldEffect" then
-                pcall(function() effect:Destroy() end)
-            end
-        end
-    end
-end
-
--- ============================================================
--- SECTION 8: TỐI ƯU TERRAIN (XÓA TEXTURE)
--- ============================================================
-local function OptimizeTerrain()
-    if not CONFIG.DisableTerrainTexture then return end
+local function NukeTerrain()
     pcall(function()
-        local terrain = Workspace:FindFirstChildOfClass("Terrain")
-        if terrain then
-            terrain.WaterWaveSize     = 0
-            terrain.WaterWaveSpeed    = 0
-            terrain.WaterReflectance  = 0
-            terrain.WaterTransparency = 1  -- tàng hình nước = ẩn wave render
-            terrain.Decoration        = false
+        local t = Workspace:FindFirstChildOfClass("Terrain")
+        if not t then return end
+
+        -- Xóa hoàn toàn hiệu ứng nước
+        t.WaterWaveSize      = 0
+        t.WaterWaveSpeed     = 0
+        t.WaterReflectance   = 0
+        t.WaterTransparency  = 1
+        t.WaterColor         = Color3.fromRGB(0, 0, 0)
+
+        -- Tắt cỏ, trang trí terrain
+        t.Decoration         = false
+
+        -- Xóa tất cả children của Terrain (texture overlay, v.v.)
+        for _, child in ipairs(t:GetChildren()) do
+            pcall(function() child:Destroy() end)
         end
     end)
 end
 
 -- ============================================================
--- SECTION 9: GIỚI HẠN FPS (DELTA X COMPATIBLE)
+-- SECTION 6: NUKE LIGHTING
 -- ============================================================
-local function SetFPSCap(limit)
-    -- Delta X hỗ trợ setfpscap hoặc Settings
-    if setfpscap then
-        pcall(function() setfpscap(limit) end)
-    elseif syn and syn.set_fps_cap then
-        pcall(function() syn.set_fps_cap(limit) end)
-    end
+local function NukeLighting()
+    pcall(function()
+        Lighting.GlobalShadows    = false
+        Lighting.ShadowSoftness   = 0
+        Lighting.Brightness       = 1
+        Lighting.Ambient          = Color3.fromRGB(130,130,130)
+        Lighting.OutdoorAmbient   = Color3.fromRGB(130,130,130)
+        Lighting.FogEnd           = 999999
+        Lighting.FogStart         = 999999
+        Lighting.ClockTime        = 14  -- ban ngày, không cần bóng tối
+
+        -- Xóa hết post-processing
+        for _, fx in ipairs(Lighting:GetChildren()) do
+            local c = fx.ClassName
+            if c == "Atmosphere" or c == "BloomEffect" or c == "BlurEffect"
+            or c == "ColorCorrectionEffect" or c == "SunRaysEffect"
+            or c == "DepthOfFieldEffect" or c == "BlackAndWhiteEffect" then
+                pcall(function() fx:Destroy() end)
+            end
+        end
+    end)
 end
 
 -- ============================================================
--- SECTION 10: GIẢM RENDER DISTANCE CHO PLAYER KHÁC
+-- SECTION 7: FPS CAP + RENDER OPTIMIZATION
 -- ============================================================
-local function ReduceOtherPlayersDetail()
+local function OptimizeRender()
+    -- FPS cap
+    pcall(function()
+        if setfpscap then setfpscap(60)
+        elseif syn and syn.set_fps_cap then syn.set_fps_cap(60) end
+    end)
+
+    -- Tắt particle player khác
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            for _, part in ipairs(p.Character:GetDescendants()) do
-                if part:IsA("ParticleEmitter") or part:IsA("Trail")
-                or part:IsA("BillboardGui") then
-                    pcall(function() part.Enabled = false end)
+        if p ~= LP and p.Character then
+            for _, d in ipairs(p.Character:GetDescendants()) do
+                if d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Beam") then
+                    pcall(function() d.Enabled = false end)
                 end
             end
         end
@@ -233,60 +311,62 @@ local function ReduceOtherPlayersDetail()
 end
 
 -- ============================================================
--- SECTION 11: TỰ ĐỘNG DỌN KHI CÓ VẬT THỂ MỚI SPAWN
+-- SECTION 8: AUTO-WATCHER (xóa object mới spawn)
 -- ============================================================
-local function WatchNewObjects()
+local function StartWatcher()
     Workspace.DescendantAdded:Connect(function(obj)
-        -- Chờ 0.1s để object load xong
-        task.delay(0.1, function()
-            CleanObject(obj)
+        task.delay(0.05, function()  -- 50ms delay thay vì 100ms
+            if obj and obj.Parent and ShouldDestroy(obj) then
+                pcall(function()
+                    obj:Destroy()
+                    destroyed = destroyed + 1
+                end)
+            end
         end)
     end)
 end
 
 -- ============================================================
--- SECTION 12: CHẠY TẤT CẢ
+-- SECTION 9: MAIN EXECUTION
 -- ============================================================
 local function Main()
-    print("[MrDon] Bắt đầu tối ưu Blox Fruits...")
+    local t0 = tick()
 
-    -- Bước 1: Lighting
-    OptimizeLighting()
-    print("[MrDon] ✓ Lighting đã tối ưu")
+    print("[MrDon v3.0] ▶ START")
 
-    -- Bước 2: Terrain
-    OptimizeTerrain()
-    print("[MrDon] ✓ Terrain đã tối ưu")
+    -- 1. Lighting nuke (cần trước để không render thêm)
+    NukeLighting()
+    print("[MrDon] ✓ Lighting nuked")
 
-    -- Bước 3: Quét và xóa object
-    ScanWorkspace()
-    print("[MrDon] ✓ Đã xóa " .. removed .. " object thừa")
+    -- 2. Terrain nuke (ocean wave như hình)
+    NukeTerrain()
+    print("[MrDon] ✓ Terrain/Ocean wave nuked")
 
-    -- Bước 4: Giảm detail player khác
-    ReduceOtherPlayersDetail()
-    print("[MrDon] ✓ Đã tắt hiệu ứng player khác")
+    -- 3. Bulk destroy toàn workspace
+    local count = BulkDestroy(Workspace)
+    print("[MrDon] ✓ Destroyed: " .. count .. " objects")
 
-    -- Bước 5: FPS cap
-    SetFPSCap(CONFIG.FPSLimit)
-    print("[MrDon] ✓ FPS giới hạn: " .. CONFIG.FPSLimit)
+    -- 4. Render optimization
+    OptimizeRender()
+    print("[MrDon] ✓ Render optimized")
 
-    -- Bước 6: Theo dõi object mới
-    WatchNewObjects()
-    print("[MrDon] ✓ Watcher đang chạy nền")
+    -- 5. Start watcher
+    StartWatcher()
+    print("[MrDon] ✓ Auto-watcher active")
 
-    -- Bước 7: Thông báo xong
+    local elapsed = math.floor((tick() - t0) * 1000)
+    print("[MrDon] === DONE in " .. elapsed .. "ms | Destroyed: " .. destroyed .. " ===")
+
     Notify(
-        "✅ MrDon FPS Boost",
-        "Đã xóa " .. removed .. " object. FPS tối ưu!",
-        5
+        "✅ MrDon v3.0 DONE",
+        "Xóa " .. destroyed .. " object trong " .. elapsed .. "ms. FPS tối ưu!",
+        6
     )
-
-    print("[MrDon] === HOÀN TẤT ===")
 end
 
--- Bảo vệ lỗi toàn cục
+-- Chạy có bảo vệ
 local ok, err = pcall(Main)
 if not ok then
-    warn("[MrDon] Lỗi: " .. tostring(err))
-    Notify("⚠️ Lỗi Script", tostring(err), 6)
+    warn("[MrDon] ERR: " .. tostring(err))
+    Notify("⚠️ Script Error", tostring(err), 6)
 end
